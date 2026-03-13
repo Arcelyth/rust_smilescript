@@ -5,8 +5,9 @@ use crate::value::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum OpCode {
-    OpReturn,
-    OpConstant(u8),
+    Return,
+    Negate,
+    Constant(u8),
 }
 
 pub struct Chunk {

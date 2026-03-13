@@ -28,8 +28,9 @@ impl<'c> Disassembler<'c> {
         }
 
         match code {
-            OpCode::OpConstant(c) => self.const_instruction("OP_CONSTANT",  *c),
-            OpCode::OpReturn => println!("OP_RETURN"), 
+            OpCode::Constant(c) => self.const_instruction("OP_CONSTANT",  *c),
+            OpCode::Negate => println!("OP_NEGATE"),
+            OpCode::Return => println!("OP_RETURN"), 
             _ => println!("Unknown opcode: {:?}", code)
         }
     }
