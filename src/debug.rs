@@ -31,6 +31,10 @@ impl<'c> Disassembler<'c> {
             OpCode::Constant(c) => self.const_instruction("OP_CONSTANT",  *c),
             OpCode::Negate => println!("OP_NEGATE"),
             OpCode::Return => println!("OP_RETURN"), 
+            OpCode::Add => println!("OP_ADD"), 
+            OpCode::Subtract => println!("OP_SUBTRACT"), 
+            OpCode::Multiply => println!("OP_MULTIPLY"), 
+            OpCode::Divide => println!("OP_DIVIDE"), 
             _ => println!("Unknown opcode: {:?}", code)
         }
     }

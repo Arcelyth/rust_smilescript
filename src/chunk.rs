@@ -8,6 +8,10 @@ pub enum OpCode {
     Return,
     Negate,
     Constant(u8),
+    Add, 
+    Subtract, 
+    Multiply,
+    Divide,
 }
 
 pub struct Chunk {

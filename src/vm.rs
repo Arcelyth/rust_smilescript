@@ -47,11 +47,15 @@ impl Vm {
                     self.push(v);
                 }
                 OpCode::Return => {
-                    println!("{}", self.pop().unwrap());
+                    println!("{}", self.pop());
                     return Ok(());
                 }
+                OpCode::Add => self.binary_op(|a, b| a + b)?,
+                OpCode::Subtract => self.binary_op(|a, b| a - b)?,
+                OpCode::Multiply => self.binary_op(|a, b| a * b)?,
+                OpCode::Divide => self.binary_op(|a, b| a / b)?,
                 OpCode::Negate => {
-                    let n = match self.pop().unwrap() {
+                    let n = match self.pop() {
                         Value::Number(n) => n,
                         _ => return self.runtime_error("Operand must be a number"),
                     };
@@ -66,8 +70,19 @@ impl Vm {
         self.stack.push(value);
     }
 
-    pub fn pop(&mut self) -> Option<Value> {
-        self.stack.pop()
+    pub fn pop(&mut self) -> Value {
+        self.stack.pop().expect("Stack is empty")
+
+    }
+    
+    pub fn binary_op(&mut self, f: fn (f64, f64) -> f64) -> Result<(), SmsError>{
+        match (self.pop(), self.pop()) {
+            (Value::Number(lv), Value::Number(rv)) => {
+                let result = f(lv, rv);
+                Ok(self.push(Value::Number(result)))
+            }
+            _ => self.runtime_error("Operands must be numbers.")
+        }
     }
 
     pub fn runtime_error(&self, msg: &str) -> Result<(), SmsError> {

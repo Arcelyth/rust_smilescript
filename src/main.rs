@@ -15,10 +15,21 @@ mod error;
 fn main() {
     let mut vm = Vm::new();
     
-    let constant = vm.chunk.add_constant(Value::Number(1.2));
+    let mut constant = vm.chunk.add_constant(Value::Number(1.2));
 
     vm.chunk.write(OpCode::Constant(constant as u8), 123);
     vm.chunk.write(OpCode::Negate, 123);
+
+    constant = vm.chunk.add_constant(Value::Number(3.4));
+    vm.chunk.write(OpCode::Constant(constant as u8), 123);
+
+    vm.chunk.write(OpCode::Add, 123);
+
+    constant = vm.chunk.add_constant(Value::Number(5.6));
+    vm.chunk.write(OpCode::Constant(constant as u8), 123);
+
+    vm.chunk.write(OpCode::Divide, 123);
+    
     vm.chunk.write(OpCode::Return, 123);
 
     let disassembler = Disassembler::new(&vm.chunk);
