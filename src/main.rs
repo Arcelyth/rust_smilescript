@@ -1,3 +1,8 @@
+use std::env;
+use std::io::{self, Write};
+use std::process;
+use std::fs;
+
 mod chunk;
 use chunk::*;
 
@@ -11,28 +16,55 @@ mod vm;
 use vm::*;
 
 mod error;
+use error::*;
+
+mod compiler;
+use compiler::*;
+
+mod scanner;
+use scanner::*;
 
 fn main() {
     let mut vm = Vm::new();
     
-    let mut constant = vm.chunk.add_constant(Value::Number(1.2));
+    let args: Vec<String> = env::args().collect();
+    if args.len() == 1 {
+        repl(&mut vm);
+    } else if args.len() == 2 {
+        run_file(&mut vm, &args[1])
+    } else {
+        println!("Usage: sms [path]");
+        return;
+    }
 
-    vm.chunk.write(OpCode::Constant(constant as u8), 123);
-    vm.chunk.write(OpCode::Negate, 123);
-
-    constant = vm.chunk.add_constant(Value::Number(3.4));
-    vm.chunk.write(OpCode::Constant(constant as u8), 123);
-
-    vm.chunk.write(OpCode::Add, 123);
-
-    constant = vm.chunk.add_constant(Value::Number(5.6));
-    vm.chunk.write(OpCode::Constant(constant as u8), 123);
-
-    vm.chunk.write(OpCode::Divide, 123);
-    
-    vm.chunk.write(OpCode::Return, 123);
-
-    let disassembler = Disassembler::new(&vm.chunk);
-    disassembler.dasm_chunk("test chunk");
-    vm.interpret().unwrap();
 }
+
+fn repl(vm: &mut Vm) {
+    loop {
+        let mut line = String::new();
+        print!("> ");
+        io::stdout().flush().unwrap();
+
+        io::stdin().read_line(&mut line).expect("Failed to read line");
+        vm.interpret(&line).ok();
+    }
+}
+
+fn run_file(vm: &mut Vm, path: &str) {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(error) => {
+            eprint!("Failed to read file {}: {}", path, error);
+            process::exit(74);
+        }
+    };
+    match vm.interpret(&content) {
+        Err(e) => match e {
+            SmsError::CompileError => process::exit(65),
+            SmsError::RuntimeError => process::exit(70),
+        }
+        _ => ()
+    }
+}
+
+

@@ -2,6 +2,7 @@ use crate::chunk::*;
 use crate::debug::Disassembler;
 use crate::error::*;
 use crate::value::*;
+use crate::compiler::*;
 
 pub struct Vm {
     pub chunk: Chunk,
@@ -20,8 +21,9 @@ impl Vm {
         }
     }
 
-    pub fn interpret(&mut self) -> Result<(), SmsError> {
-        self.run()
+    pub fn interpret(&mut self, src: &str) -> Result<(), SmsError> {
+        compile(src);
+        Ok(())
     }
 
     pub fn read_byte(&mut self) -> OpCode {
