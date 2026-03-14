@@ -227,7 +227,10 @@ impl<'c> Parser<'c> {
 
     fn variable(&mut self) {}
 
-    fn string(&mut self) {}
+    fn string(&mut self) {
+        let lexeme = self.previous.lexeme.clone();
+        self.emit_constant(Value::String(lexeme[1..lexeme.len()-1].to_string()));
+    }
 
     fn literal(&mut self) {
         match self.previous.kind {

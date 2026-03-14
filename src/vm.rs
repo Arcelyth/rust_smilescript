@@ -1,8 +1,8 @@
 use crate::chunk::*;
-use crate::parser::*;
 use crate::compiler::*;
 use crate::debug::Disassembler;
 use crate::error::*;
+use crate::parser::*;
 use crate::value::*;
 
 macro_rules! binary_op {
@@ -65,7 +65,7 @@ impl Vm {
             }
             match self.read_byte() {
                 OpCode::Constant(c) => {
-                    let v = self.chunk.constants[c as usize];
+                    let v = self.chunk.constants[c as usize].clone();
                     self.push(v);
                 }
                 OpCode::Return => {
@@ -81,8 +81,24 @@ impl Vm {
                     self.push(Value::Bool(values_equal(a, b)));
                 }
                 OpCode::Greater => binary_op!(self, Bool, >),
-                OpCode::Less=> binary_op!(self, Bool, <),
-                OpCode::Add => binary_op!(self, Number, +),
+                OpCode::Less => binary_op!(self, Bool, <),
+                OpCode::Add => {
+                    let (b, a) = (self.pop(), self.pop());
+                    match (&a, &b) {
+                        (Value::Number(n1), Value::Number(n2)) => {
+                            self.push(Value::Number(n1 + n2));
+                        }
+                        (Value::String(s1), Value::String(s2)) => {
+                            self.push(Value::String(format!("{}{}", s1, s2)));
+                        }
+                        _ => {
+                            self.push(a);
+                            self.push(b);
+                            return self.runtime_error("Operands must be two numbers or two strings.");
+                        }
+                    }
+                    binary_op!(self, Number, +)
+                }
                 OpCode::Subtract => binary_op!(self, Number, -),
                 OpCode::Multiply => binary_op!(self, Number, *),
                 OpCode::Divide => binary_op!(self, Number, /),
@@ -117,7 +133,7 @@ impl Vm {
             _ => false,
         }
     }
-  
+
     pub fn runtime_error(&self, msg: &str) -> Result<(), SmsError> {
         eprintln!("{}", msg);
         let idx = self.ip - 1;
@@ -126,14 +142,3 @@ impl Vm {
         Err(SmsError::RuntimeError)
     }
 }
-
-fn values_equal(a: Value, b: Value) -> bool {
-    match (a, b) {
-        (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
-        (Value::Nil, Value::Nil) => true,
-        (Value::Number(n1), Value::Number(n2)) => n1 == n2,
-        _ => false,
-    }
-}
-
-
