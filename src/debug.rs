@@ -34,6 +34,7 @@ impl<'c> Disassembler<'c> {
             OpCode::Greater => println!("OP_GREATER"),
             OpCode::Less => println!("OP_LESS"),
             OpCode::Negate => println!("OP_NEGATE"),
+            OpCode::Print => println!("OP_PRINT"),
             OpCode::Return => println!("OP_RETURN"),
             OpCode::Add => println!("OP_ADD"),
             OpCode::Subtract => println!("OP_SUBTRACT"),

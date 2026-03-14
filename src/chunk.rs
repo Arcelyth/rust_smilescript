@@ -1,10 +1,9 @@
 #![allow(dead_code)]
-use std::fmt;
-
 use crate::value::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum OpCode {
+    Print,
     Return,
     Negate,
     Constant(u8),

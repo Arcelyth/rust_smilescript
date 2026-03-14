@@ -68,8 +68,8 @@ impl Vm {
                     let v = self.chunk.constants[c as usize].clone();
                     self.push(v);
                 }
+                OpCode::Print => println!("{}", self.pop()),
                 OpCode::Return => {
-                    println!("{}", self.pop());
                     return Ok(());
                 }
                 OpCode::Nil => self.push(Value::Nil),
@@ -94,7 +94,8 @@ impl Vm {
                         _ => {
                             self.push(a);
                             self.push(b);
-                            return self.runtime_error("Operands must be two numbers or two strings.");
+                            return self
+                                .runtime_error("Operands must be two numbers or two strings.");
                         }
                     }
                     binary_op!(self, Number, +)

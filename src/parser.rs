@@ -79,10 +79,20 @@ impl<'c> Parser<'c> {
     // return false if an error occurred
     pub fn compile(&mut self) -> bool {
         self.advance();
-        self.expression();
-        self.consume(TokenType::Eof, "Expect end of expression.");
+        while (!self.match_token(TokenType::Eof)) {
+            self.declaration();
+        }
+
         self.end_compiler();
         !self.had_error
+    }
+
+    fn match_token(&mut self, kind: TokenType) -> bool {
+        if !(self.current.kind == kind) {
+            return false;
+        }
+        self.advance();
+        true
     }
 
     fn advance(&mut self) {
@@ -245,6 +255,26 @@ impl<'c> Parser<'c> {
 
     fn or(&mut self) {}
 
+    fn expression(&mut self) {
+        self.parse_precedence(Precedence::Assignment);
+    }
+
+    fn statement(&mut self) {
+        if self.match_token(TokenType::Print) {
+            self.print_statement();
+        }
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit_code(OpCode::Print);
+    }
+
+    fn declaration(&mut self) {
+        self.statement();
+    }
+
     fn parse_precedence(&mut self, prec: Precedence) {
         self.advance();
         let pre_rule = Parser::get_rule(self.previous.kind).prefix;
@@ -261,10 +291,6 @@ impl<'c> Parser<'c> {
                 f(self);
             }
         }
-    }
-
-    fn expression(&mut self) {
-        self.parse_precedence(Precedence::Assignment);
     }
 
     fn get_rule(kind: TokenType) -> ParseRule<'c> {
