@@ -1,8 +1,20 @@
 use crate::chunk::*;
+use crate::parser::*;
 use crate::compiler::*;
 use crate::debug::Disassembler;
 use crate::error::*;
 use crate::value::*;
+
+macro_rules! binary_op {
+    ($vm:ident, $value_type:ident, $op:tt) => {
+        match ($vm.pop(), $vm.pop()) {
+            (Value::Number(b), Value::Number(a)) => {
+                $vm.push(Value::$value_type(a $op b));
+            }
+            _ => return $vm.runtime_error("Operands must be numbers."),
+        }
+    };
+}
 
 pub struct Vm {
     pub chunk: Chunk,
@@ -22,9 +34,15 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, src: &str) -> Result<(), SmsError> {
-        if !compile(src, &mut self.chunk) {
+        let mut chunk = Chunk::new();
+        let compiler = Compiler::new(&mut chunk);
+        let mut parser = Parser::new(src, compiler);
+
+        if !parser.compile() {
             return Err(SmsError::CompileError);
         }
+        self.chunk = chunk;
+        self.ip = 0;
         self.run()
     }
 
@@ -54,10 +72,20 @@ impl Vm {
                     println!("{}", self.pop());
                     return Ok(());
                 }
-                OpCode::Add => self.binary_op(|a, b| a + b)?,
-                OpCode::Subtract => self.binary_op(|a, b| a - b)?,
-                OpCode::Multiply => self.binary_op(|a, b| a * b)?,
-                OpCode::Divide => self.binary_op(|a, b| a / b)?,
+                OpCode::Nil => self.push(Value::Nil),
+                OpCode::True => self.push(Value::Bool(true)),
+                OpCode::False => self.push(Value::Bool(false)),
+                OpCode::Equal => {
+                    let a = self.pop();
+                    let b = self.pop();
+                    self.push(Value::Bool(values_equal(a, b)));
+                }
+                OpCode::Greater => binary_op!(self, Bool, >),
+                OpCode::Less=> binary_op!(self, Bool, <),
+                OpCode::Add => binary_op!(self, Number, +),
+                OpCode::Subtract => binary_op!(self, Number, -),
+                OpCode::Multiply => binary_op!(self, Number, *),
+                OpCode::Divide => binary_op!(self, Number, /),
                 OpCode::Negate => {
                     let n = match self.pop() {
                         Value::Number(n) => n,
@@ -89,16 +117,7 @@ impl Vm {
             _ => false,
         }
     }
-    pub fn binary_op(&mut self, f: fn(f64, f64) -> f64) -> Result<(), SmsError> {
-        match (self.pop(), self.pop()) {
-            (Value::Number(lv), Value::Number(rv)) => {
-                let result = f(lv, rv);
-                Ok(self.push(Value::Number(result)))
-            }
-            _ => self.runtime_error("Operands must be numbers."),
-        }
-    }
-
+  
     pub fn runtime_error(&self, msg: &str) -> Result<(), SmsError> {
         eprintln!("{}", msg);
         let idx = self.ip - 1;
@@ -107,3 +126,14 @@ impl Vm {
         Err(SmsError::RuntimeError)
     }
 }
+
+fn values_equal(a: Value, b: Value) -> bool {
+    match (a, b) {
+        (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
+        (Value::Nil, Value::Nil) => true,
+        (Value::Number(n1), Value::Number(n2)) => n1 == n2,
+        _ => false,
+    }
+}
+
+

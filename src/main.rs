@@ -44,12 +44,12 @@ fn main() {
 
 fn repl(vm: &mut Vm) {
     loop {
-        let mut line = String::new();
         print!("> ");
         io::stdout().flush().unwrap();
-
+        let mut line = String::new();
         io::stdin().read_line(&mut line).expect("Failed to read line");
         vm.interpret(&line).ok();
+        line.clear();
     }
 }
 

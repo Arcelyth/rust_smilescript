@@ -131,7 +131,7 @@ impl<'c> Parser<'c> {
         }
     }
 
-    fn current_chunk(&mut self) -> &mut Chunk {
+    pub fn current_chunk(&mut self) -> &mut Chunk {
         self.compiler.current_chunk()
     }
 
@@ -183,9 +183,10 @@ impl<'c> Parser<'c> {
     }
 
     fn unary(&mut self) {
+        let kind = self.previous.kind;
         self.parse_precedence(Precedence::Unary);
 
-        match self.previous.kind {
+        match kind {
             TokenType::Minus => self.emit_code(OpCode::Negate),
             TokenType::Bang => self.emit_code(OpCode::Not),
             _ => (),
@@ -202,6 +203,24 @@ impl<'c> Parser<'c> {
             TokenType::Minus => self.emit_code(OpCode::Subtract),
             TokenType::Star => self.emit_code(OpCode::Multiply),
             TokenType::Slash => self.emit_code(OpCode::Divide),
+            TokenType::BangEqual => {
+                self.emit_code(OpCode::Equal);
+                self.emit_code(OpCode::Not);
+            }
+            TokenType::Equal => 
+                self.emit_code(OpCode::Equal),
+            TokenType::Greater => 
+                self.emit_code(OpCode::Greater),
+            TokenType::GreaterEqual => {
+                self.emit_code(OpCode::Less);
+                self.emit_code(OpCode::Not);
+            }
+            TokenType::Less => 
+                self.emit_code(OpCode::Less),
+            TokenType::LessEqual => {
+                self.emit_code(OpCode::Greater);
+                self.emit_code(OpCode::Not);
+            }
             _ => (),
         }
     }
