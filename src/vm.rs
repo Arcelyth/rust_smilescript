@@ -1,8 +1,8 @@
 use crate::chunk::*;
+use crate::compiler::*;
 use crate::debug::Disassembler;
 use crate::error::*;
 use crate::value::*;
-use crate::compiler::*;
 
 pub struct Vm {
     pub chunk: Chunk,
@@ -24,7 +24,7 @@ impl Vm {
     pub fn interpret(&mut self, src: &str) -> Result<(), SmsError> {
         if !compile(src, &mut self.chunk) {
             return Err(SmsError::CompileError);
-        } 
+        }
         self.run()
     }
 
@@ -65,6 +65,10 @@ impl Vm {
                     };
                     self.push(Value::Number(-n));
                 }
+                OpCode::Not => {
+                    let v = self.pop();
+                    self.push(Value::Bool(self.is_falsey(&v)));
+                }
                 _ => return Ok(()),
             }
         }
@@ -76,21 +80,30 @@ impl Vm {
 
     pub fn pop(&mut self) -> Value {
         self.stack.pop().expect("Stack is empty")
-
     }
-    
-    pub fn binary_op(&mut self, f: fn (f64, f64) -> f64) -> Result<(), SmsError>{
+
+    fn is_falsey(&self, val: &Value) -> bool {
+        match *val {
+            Value::Bool(b) => !b,
+            Value::Nil => true,
+            _ => false,
+        }
+    }
+    pub fn binary_op(&mut self, f: fn(f64, f64) -> f64) -> Result<(), SmsError> {
         match (self.pop(), self.pop()) {
             (Value::Number(lv), Value::Number(rv)) => {
                 let result = f(lv, rv);
                 Ok(self.push(Value::Number(result)))
             }
-            _ => self.runtime_error("Operands must be numbers.")
+            _ => self.runtime_error("Operands must be numbers."),
         }
     }
 
     pub fn runtime_error(&self, msg: &str) -> Result<(), SmsError> {
         eprintln!("{}", msg);
+        let idx = self.ip - 1;
+        let line = self.chunk.lines[idx];
+        eprintln!("[line {}] in script", line);
         Err(SmsError::RuntimeError)
     }
 }

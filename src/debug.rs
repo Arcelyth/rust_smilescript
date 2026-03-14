@@ -29,6 +29,9 @@ impl<'c> Disassembler<'c> {
 
         match code {
             OpCode::Constant(c) => self.const_instruction("OP_CONSTANT",  *c),
+            OpCode::Nil => println!("OP_NIL"),
+            OpCode::True => println!("OP_TRUE"),
+            OpCode::False => println!("OP_FALSE"),
             OpCode::Negate => println!("OP_NEGATE"),
             OpCode::Return => println!("OP_RETURN"), 
             OpCode::Add => println!("OP_ADD"), 

@@ -187,6 +187,7 @@ impl<'c> Parser<'c> {
 
         match self.previous.kind {
             TokenType::Minus => self.emit_code(OpCode::Negate),
+            TokenType::Bang => self.emit_code(OpCode::Not),
             _ => (),
         }
     }
@@ -209,7 +210,14 @@ impl<'c> Parser<'c> {
 
     fn string(&mut self) {}
 
-    fn literal(&mut self) {}
+    fn literal(&mut self) {
+        match self.previous.kind {
+            TokenType::False => self.emit_code(OpCode::False),
+            TokenType::Nil => self.emit_code(OpCode::Nil),
+            TokenType::True => self.emit_code(OpCode::True),
+            _ => ()
+        }
+    }
 
     fn and(&mut self) {}
 
