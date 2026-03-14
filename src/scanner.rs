@@ -192,7 +192,7 @@ impl Scanner {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,
@@ -244,11 +244,24 @@ pub enum TokenType {
     Eof,
 }
 
+#[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenType,
     pub lexeme: Rc<str>,
     pub line: usize,
 }
+
+impl Token {
+    pub fn new(kind: TokenType, lexeme: &str, line: usize) -> Self {
+        Self {
+            kind, 
+            lexeme: lexeme.into(),
+            line,
+        }
+    }
+}
+
+
 
 fn is_digit(ch: u8) -> bool {
     ch >= b'0' && ch <= b'9'

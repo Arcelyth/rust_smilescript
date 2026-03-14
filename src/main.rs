@@ -24,6 +24,9 @@ use compiler::*;
 mod scanner;
 use scanner::*;
 
+mod parser;
+use parser::*;
+
 fn main() {
     let mut vm = Vm::new();
     

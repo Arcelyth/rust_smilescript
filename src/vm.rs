@@ -22,8 +22,10 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, src: &str) -> Result<(), SmsError> {
-        compile(src);
-        Ok(())
+        if !compile(src, &mut self.chunk) {
+            return Err(SmsError::CompileError);
+        } 
+        self.run()
     }
 
     pub fn read_byte(&mut self) -> OpCode {

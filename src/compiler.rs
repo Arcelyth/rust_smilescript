@@ -1,20 +1,25 @@
 use crate::scanner::*;
+use crate::parser::*;
+use crate::chunk::*;
 
-pub fn compile(src: &str) {
-    let mut scanner = Scanner::new(src);
-    let mut line = 0;
-    loop {
-        let token = scanner.scan();
-        if token.line != line {
-            print!("{:4} ", token.line);
-            line = token.line;
-        } else {
-            print!("   | ");
+pub struct Compiler<'c> {
+    compiling_chunk: &'c mut Chunk
+}
+
+impl<'c> Compiler<'c> {
+    pub fn new(chunk: &'c mut Chunk) -> Self {
+        Self {
+            compiling_chunk: chunk,
         }
-        println!("{:2?} '{}'", token.kind, token.lexeme);
-
-        if let TokenType::Eof = token.kind {
-            break;
-        };
     }
+
+    pub fn current_chunk(&mut self) -> &mut Chunk {
+        &mut self.compiling_chunk
+    }
+}
+
+pub fn compile(src: &str, chunk: &mut Chunk) -> bool {
+    let compiler = Compiler::new(chunk);
+    let mut parser = Parser::new(src, compiler);
+    parser.compile()
 }
