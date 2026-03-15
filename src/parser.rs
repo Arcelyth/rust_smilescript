@@ -141,6 +141,10 @@ impl<'c> Parser<'c> {
         }
     }
 
+    fn check(&self, kind: TokenType) -> bool {
+        self.current.kind == kind
+    }
+
     pub fn current_chunk(&mut self) -> &mut Chunk {
         self.compiler.current_chunk()
     }
@@ -237,13 +241,37 @@ impl<'c> Parser<'c> {
     }
 
     fn named_variable(&mut self, name: Token, can_assign: bool) {
-        let idx = self.identifier_constant(name);
+        let get_op;
+        let set_op;
+
+        if let Some(idx) = self.resolve_local(name) {
+            get_op = OpCode::GetLocal(idx);
+            set_op = OpCode::SetLocal(idx);
+        } else {
+            let index = self.identifier_constant(name);
+            get_op = OpCode::GetGlobal(index);
+            set_op = OpCode::SetGlobal(index);
+        }
+
         if can_assign && self.match_token(TokenType::Equal) {
             self.expression();
-            self.emit_code(OpCode::SetGlobal(idx));
+            self.emit_code(set_op);
         } else {
-            self.emit_code(OpCode::GetGlobal(idx));
+            self.emit_code(get_op);
         }
+    }
+
+    fn resolve_local(&mut self, name: Token) -> Option<u8> {
+        for i in (0..self.compiler.locals.len()).rev() {
+            let local = &self.compiler.locals[i];
+            if local.name.lexeme == name.lexeme {
+                if local.depth == -1 {
+                    self.error("Can't read local variable in its own initializer.");
+                }
+                return Some(i as u8);
+            }
+        }
+        None
     }
 
     fn string(&mut self, _can_assign: bool) {
@@ -268,9 +296,41 @@ impl<'c> Parser<'c> {
         self.parse_precedence(Precedence::Assignment);
     }
 
+    fn block(&mut self) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.declaration();
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block.");
+    }
+
+    fn begin_scope(&mut self) {
+        self.compiler.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.compiler.scope_depth -= 1;
+
+        loop {
+            if let Some(l) = self.compiler.locals.last() {
+                if l.depth > self.compiler.scope_depth {
+                    self.emit_code(OpCode::Pop);
+                    self.compiler.locals.pop();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
     fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
+        } else if self.match_token(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expression_statement();
         }
@@ -306,12 +366,19 @@ impl<'c> Parser<'c> {
         } else {
             self.emit_code(OpCode::Nil);
         }
-        self.consume(TokenType::Semicolon, "Expect ';' after variable declaration.");
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        );
         self.define_variable(global);
     }
 
     fn parse_variable(&mut self, msg: &str) -> u8 {
         self.consume(TokenType::Identifier, msg);
+        self.declare_variable();
+        if self.compiler.scope_depth > 0 {
+            return 0;
+        }
         self.identifier_constant(self.previous)
     }
 
@@ -320,7 +387,47 @@ impl<'c> Parser<'c> {
     }
 
     fn define_variable(&mut self, idx: u8) {
+        if self.compiler.scope_depth > 0 {
+            self.make_init();
+            return;
+        }
         self.emit_code(OpCode::DefineGlobal(idx));
+    }
+
+    fn make_init(&mut self) {
+        let len = self.compiler.locals.len();
+        self.compiler.locals[len - 1].depth = self.compiler.scope_depth;
+    }
+
+    fn declare_variable(&mut self) {
+        if self.compiler.scope_depth == 0 {
+            return;
+        }
+
+        let name = self.previous;
+        let mut has_err = false;
+        for local in self.compiler.locals.iter().rev() {
+            if local.depth != -1 && local.depth < self.compiler.scope_depth {
+                break;
+            }
+            if name.lexeme == local.name.lexeme {
+                has_err = true;
+                break;
+            }
+        }
+        if has_err {
+            self.error("Already a variable with this name in this scope.");
+        }
+        self.add_local(name);
+    }
+
+    fn add_local(&mut self, name: Token<'c>) {
+        if self.compiler.locals.len() == Compiler::LOCAL_COUNT {
+            self.error("Too many local variables in function.");
+            return;
+        }
+        let local = Local::new(name, -1);
+        self.compiler.locals.push(local);
     }
 
     fn parse_precedence(&mut self, prec: Precedence) {

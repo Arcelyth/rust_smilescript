@@ -31,6 +31,8 @@ impl<'c> Disassembler<'c> {
             OpCode::True => println!("OP_TRUE"),
             OpCode::False => println!("OP_FALSE"),
             OpCode::Pop => println!("OP_POP"),
+            OpCode::SetLocal(c) => self.byte_instruction("OP_SET_LOCAL", *c), 
+            OpCode::GetLocal(c) => self.byte_instruction("OP_GET_LOCAL", *c), 
             OpCode::SetGlobal(c) => self.const_instruction("OP_SET_GLOBAL", *c),
             OpCode::GetGlobal(c) => self.const_instruction("OP_GET_GLOBAL", *c),
             OpCode::DefineGlobal(c) => self.const_instruction("OP_DEFINE_GLOBAL", *c),
@@ -54,4 +56,12 @@ impl<'c> Disassembler<'c> {
             name, offset, self.chunk.constants[offset as usize]
         );
     }
+
+    pub fn byte_instruction(&self, name: &str, offset: u8) {
+        println!(
+            "{:<16} {:4} {:?}",
+            name, offset, self.chunk.code[offset as usize + 1]
+        );
+    }
+
 }

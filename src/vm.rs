@@ -83,6 +83,13 @@ impl Vm {
                 OpCode::Pop => {
                     self.pop();
                 }
+                OpCode::GetLocal(slot) => {
+                    let v = &self.stack[slot as usize];
+                    self.push(v.clone());
+                }
+                OpCode::SetLocal(slot) => {
+                    self.stack[slot as usize] = self.peek(0);
+                }
                 OpCode::SetGlobal(idx) => {
                     let name = self.read_string(idx);
                     let v = self.peek(0);
