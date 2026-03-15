@@ -37,7 +37,7 @@ impl Precedence {
     }
 }
 
-type ParseFn<'c> = fn(&mut Parser<'c>);
+type ParseFn<'c> = fn(&mut Parser<'c>, bool);
 
 struct ParseRule<'c> {
     prefix: Option<ParseFn<'c>>,
@@ -182,17 +182,17 @@ impl<'c> Parser<'c> {
         }
     }
 
-    fn number(&mut self) {
+    fn number(&mut self, _can_assign: bool) {
         let v = self.previous.lexeme.parse::<f64>().unwrap();
         self.emit_constant(Value::Number(v));
     }
 
-    fn grouping(&mut self) {
+    fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
 
-    fn unary(&mut self) {
+    fn unary(&mut self, _can_assign: bool) {
         let kind = self.previous.kind;
         self.parse_precedence(Precedence::Unary);
 
@@ -203,7 +203,7 @@ impl<'c> Parser<'c> {
         }
     }
 
-    fn binary(&mut self) {
+    fn binary(&mut self, _can_assign: bool) {
         let kind = self.previous.kind;
         let rule = Parser::get_rule(kind);
         self.parse_precedence(rule.prec.next());
@@ -232,21 +232,26 @@ impl<'c> Parser<'c> {
         }
     }
 
-    fn variable(&mut self) {
-        self.named_variable(self.previous);
+    fn variable(&mut self, can_assign: bool) {
+        self.named_variable(self.previous, can_assign);
     }
 
-    fn named_variable(&mut self, name: Token) {
+    fn named_variable(&mut self, name: Token, can_assign: bool) {
         let idx = self.identifier_constant(name);
-        self.emit_code(OpCode::GetGlobal(idx));
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.expression();
+            self.emit_code(OpCode::SetGlobal(idx));
+        } else {
+            self.emit_code(OpCode::GetGlobal(idx));
+        }
     }
 
-    fn string(&mut self) {
+    fn string(&mut self, _can_assign: bool) {
         let lexeme = self.previous.lexeme;
         self.emit_constant(Value::String(lexeme[1..lexeme.len() - 1].into()));
     }
 
-    fn literal(&mut self) {
+    fn literal(&mut self, _can_assign: bool) {
         match self.previous.kind {
             TokenType::False => self.emit_code(OpCode::False),
             TokenType::Nil => self.emit_code(OpCode::Nil),
@@ -255,9 +260,9 @@ impl<'c> Parser<'c> {
         }
     }
 
-    fn and(&mut self) {}
+    fn and(&mut self, _can_assign: bool) {}
 
-    fn or(&mut self) {}
+    fn or(&mut self, _can_assign: bool) {}
 
     fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
@@ -321,18 +326,26 @@ impl<'c> Parser<'c> {
     fn parse_precedence(&mut self, prec: Precedence) {
         self.advance();
         let pre_rule = Parser::get_rule(self.previous.kind).prefix;
-        if let Some(f) = pre_rule {
-            f(self);
+        let pre_rule = if let Some(f) = pre_rule {
+            f
         } else {
             self.error("Expect expression.");
-        }
+            return;
+        };
+
+        let can_assign = prec <= Precedence::Assignment;
+        pre_rule(self, can_assign);
 
         while prec <= Parser::get_rule(self.current.kind).prec {
             self.advance();
             let inf_rule = Parser::get_rule(self.previous.kind).infix;
             if let Some(f) = inf_rule {
-                f(self);
+                f(self, can_assign);
             }
+        }
+
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.error("Invalid assignment target.");
         }
     }
 

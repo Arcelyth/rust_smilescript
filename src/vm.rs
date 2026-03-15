@@ -23,7 +23,7 @@ pub struct Vm {
     pub chunk: Chunk,
     pub ip: usize,
     pub stack: Vec<Value>,
-    pub globals: HashMap<Rc<str>, Value>
+    pub globals: HashMap<Rc<str>, Value>,
 }
 
 impl Vm {
@@ -80,15 +80,25 @@ impl Vm {
                 OpCode::Nil => self.push(Value::Nil),
                 OpCode::True => self.push(Value::Bool(true)),
                 OpCode::False => self.push(Value::Bool(false)),
-                OpCode::Pop => { 
+                OpCode::Pop => {
                     self.pop();
-                },
+                }
+                OpCode::SetGlobal(idx) => {
+                    let name = self.read_string(idx);
+                    let v = self.peek(0);
+
+                    if self.globals.insert(name.clone(), v).is_none() {
+                        self.globals.remove(&name);
+                        let msg = format!("Undefined variable '{}'.", name);
+                        return self.runtime_error(&msg);
+                    }
+                }
                 OpCode::GetGlobal(idx) => {
                     let name = self.read_string(idx);
                     if let Some(v) = self.globals.get(&name) {
                         self.push(v.clone())
                     } else {
-                        self.runtime_error(&format!("Undefined variable '{}'", name));
+                        self.runtime_error(&format!("Undefined variable '{}'", name))?;
                     }
                 }
                 OpCode::DefineGlobal(idx) => {
@@ -146,6 +156,11 @@ impl Vm {
 
     pub fn pop(&mut self) -> Value {
         self.stack.pop().expect("Stack is empty")
+    }
+
+    fn peek(&self, n: usize) -> Value {
+        let size = self.stack.len();
+        self.stack[size - 1 - n].clone()
     }
 
     fn is_falsey(&self, val: &Value) -> bool {

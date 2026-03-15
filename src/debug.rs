@@ -19,7 +19,7 @@ impl<'c> Disassembler<'c> {
     pub fn dasm_instruction(&self, offset: usize, code: &OpCode) {
         print!("{:04}   ", offset);
 
-        if (offset > 0 && self.chunk.lines[offset] == self.chunk.lines[offset - 1]) {
+        if offset > 0 && self.chunk.lines[offset] == self.chunk.lines[offset - 1] {
             print!("   | ");
         } else {
             print!("{:4} ", self.chunk.lines[offset]);
@@ -31,6 +31,7 @@ impl<'c> Disassembler<'c> {
             OpCode::True => println!("OP_TRUE"),
             OpCode::False => println!("OP_FALSE"),
             OpCode::Pop => println!("OP_POP"),
+            OpCode::SetGlobal(c) => self.const_instruction("OP_SET_GLOBAL", *c),
             OpCode::GetGlobal(c) => self.const_instruction("OP_GET_GLOBAL", *c),
             OpCode::DefineGlobal(c) => self.const_instruction("OP_DEFINE_GLOBAL", *c),
             OpCode::Equal => println!("OP_EQUAL"),
