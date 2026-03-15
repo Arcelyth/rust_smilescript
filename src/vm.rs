@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use crate::chunk::*;
 use crate::compiler::*;
 use crate::debug::Disassembler;
@@ -20,6 +23,7 @@ pub struct Vm {
     pub chunk: Chunk,
     pub ip: usize,
     pub stack: Vec<Value>,
+    pub globals: HashMap<Rc<str>, Value>
 }
 
 impl Vm {
@@ -30,6 +34,7 @@ impl Vm {
             chunk: Chunk::new(),
             ip: 0,
             stack: Vec::with_capacity(Self::STACK_MAX),
+            globals: HashMap::new(),
         }
     }
 
@@ -75,6 +80,22 @@ impl Vm {
                 OpCode::Nil => self.push(Value::Nil),
                 OpCode::True => self.push(Value::Bool(true)),
                 OpCode::False => self.push(Value::Bool(false)),
+                OpCode::Pop => { 
+                    self.pop();
+                },
+                OpCode::GetGlobal(idx) => {
+                    let name = self.read_string(idx);
+                    if let Some(v) = self.globals.get(&name) {
+                        self.push(v.clone())
+                    } else {
+                        self.runtime_error(&format!("Undefined variable '{}'", name));
+                    }
+                }
+                OpCode::DefineGlobal(idx) => {
+                    let name = self.read_string(idx);
+                    let v = self.pop();
+                    self.globals.insert(name, v);
+                }
                 OpCode::Equal => {
                     let a = self.pop();
                     let b = self.pop();
@@ -89,7 +110,7 @@ impl Vm {
                             self.push(Value::Number(n1 + n2));
                         }
                         (Value::String(s1), Value::String(s2)) => {
-                            self.push(Value::String(format!("{}{}", s1, s2)));
+                            self.push(Value::String(format!("{}{}", s1, s2).into()));
                         }
                         _ => {
                             self.push(a);
@@ -132,6 +153,14 @@ impl Vm {
             Value::Bool(b) => !b,
             Value::Nil => true,
             _ => false,
+        }
+    }
+
+    pub fn read_string(&self, idx: u8) -> Rc<str> {
+        if let Value::String(s) = &self.chunk.constants[idx as usize] {
+            s.clone()
+        } else {
+            panic!("Constant is not String!")
         }
     }
 

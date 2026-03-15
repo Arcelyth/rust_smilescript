@@ -1,6 +1,6 @@
 use crate::chunk::*;
-use crate::debug::Disassembler;
 use crate::compiler::*;
+use crate::debug::Disassembler;
 use crate::scanner::*;
 use crate::value::*;
 
@@ -56,16 +56,16 @@ impl<'c> ParseRule<'c> {
 }
 
 pub struct Parser<'c> {
-    scanner: Scanner,
+    scanner: Scanner<'c>,
     compiler: Compiler<'c>,
-    previous: Token,
-    current: Token,
+    previous: Token<'c>,
+    current: Token<'c>,
     had_error: bool,
     panic_mode: bool,
 }
 
 impl<'c> Parser<'c> {
-    pub fn new(src: &str, compiler: Compiler<'c>) -> Self {
+    pub fn new(src: &'c str, compiler: Compiler<'c>) -> Self {
         Self {
             scanner: Scanner::new(src),
             compiler,
@@ -79,7 +79,7 @@ impl<'c> Parser<'c> {
     // return false if an error occurred
     pub fn compile(&mut self) -> bool {
         self.advance();
-        while (!self.match_token(TokenType::Eof)) {
+        while !self.match_token(TokenType::Eof) {
             self.declaration();
         }
 
@@ -96,22 +96,22 @@ impl<'c> Parser<'c> {
     }
 
     fn advance(&mut self) {
-        self.previous = self.current.clone();
+        self.previous = self.current;
         loop {
             self.current = self.scanner.scan();
             if self.current.kind != TokenType::Error {
                 break;
             }
-            self.error_at_current(&self.current.clone().lexeme);
+            self.error_at_current(self.current.lexeme);
         }
     }
 
     fn error_at_current(&mut self, msg: &str) {
-        self.error_at(self.current.clone(), msg);
+        self.error_at(self.current, msg);
     }
 
     fn error(&mut self, msg: &str) {
-        self.error_at(self.previous.clone(), msg);
+        self.error_at(self.previous, msg);
     }
 
     fn error_at(&mut self, token: Token, msg: &str) {
@@ -217,16 +217,13 @@ impl<'c> Parser<'c> {
                 self.emit_code(OpCode::Equal);
                 self.emit_code(OpCode::Not);
             }
-            TokenType::Equal => 
-                self.emit_code(OpCode::Equal),
-            TokenType::Greater => 
-                self.emit_code(OpCode::Greater),
+            TokenType::Equal => self.emit_code(OpCode::Equal),
+            TokenType::Greater => self.emit_code(OpCode::Greater),
             TokenType::GreaterEqual => {
                 self.emit_code(OpCode::Less);
                 self.emit_code(OpCode::Not);
             }
-            TokenType::Less => 
-                self.emit_code(OpCode::Less),
+            TokenType::Less => self.emit_code(OpCode::Less),
             TokenType::LessEqual => {
                 self.emit_code(OpCode::Greater);
                 self.emit_code(OpCode::Not);
@@ -235,11 +232,18 @@ impl<'c> Parser<'c> {
         }
     }
 
-    fn variable(&mut self) {}
+    fn variable(&mut self) {
+        self.named_variable(self.previous);
+    }
+
+    fn named_variable(&mut self, name: Token) {
+        let idx = self.identifier_constant(name);
+        self.emit_code(OpCode::GetGlobal(idx));
+    }
 
     fn string(&mut self) {
-        let lexeme = self.previous.lexeme.clone();
-        self.emit_constant(Value::String(lexeme[1..lexeme.len()-1].to_string()));
+        let lexeme = self.previous.lexeme;
+        self.emit_constant(Value::String(lexeme[1..lexeme.len() - 1].into()));
     }
 
     fn literal(&mut self) {
@@ -247,7 +251,7 @@ impl<'c> Parser<'c> {
             TokenType::False => self.emit_code(OpCode::False),
             TokenType::Nil => self.emit_code(OpCode::Nil),
             TokenType::True => self.emit_code(OpCode::True),
-            _ => ()
+            _ => (),
         }
     }
 
@@ -262,6 +266,8 @@ impl<'c> Parser<'c> {
     fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
+        } else {
+            self.expression_statement();
         }
     }
 
@@ -271,8 +277,45 @@ impl<'c> Parser<'c> {
         self.emit_code(OpCode::Print);
     }
 
+    fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit_code(OpCode::Pop);
+    }
+
     fn declaration(&mut self) {
-        self.statement();
+        if self.match_token(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.statement();
+        }
+        if self.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    fn var_declaration(&mut self) {
+        let global = self.parse_variable("Expect variable name.");
+        if self.match_token(TokenType::Equal) {
+            self.expression();
+        } else {
+            self.emit_code(OpCode::Nil);
+        }
+        self.consume(TokenType::Semicolon, "Expect ';' after variable declaration.");
+        self.define_variable(global);
+    }
+
+    fn parse_variable(&mut self, msg: &str) -> u8 {
+        self.consume(TokenType::Identifier, msg);
+        self.identifier_constant(self.previous)
+    }
+
+    fn identifier_constant(&mut self, name: Token) -> u8 {
+        self.make_constant(Value::String(name.lexeme.into()))
+    }
+
+    fn define_variable(&mut self, idx: u8) {
+        self.emit_code(OpCode::DefineGlobal(idx));
     }
 
     fn parse_precedence(&mut self, prec: Precedence) {
@@ -290,6 +333,29 @@ impl<'c> Parser<'c> {
             if let Some(f) = inf_rule {
                 f(self);
             }
+        }
+    }
+
+    fn synchronize(&mut self) {
+        self.panic_mode = false;
+        while self.current.kind != TokenType::Eof {
+            if self.previous.kind == TokenType::Semicolon {
+                return;
+            }
+            match self.current.kind {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => {
+                    return;
+                }
+                _ => (),
+            }
+            self.advance();
         }
     }
 

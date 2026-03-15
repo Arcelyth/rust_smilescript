@@ -1,11 +1,12 @@
 use std::fmt::{self, Display};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Nil, 
     Bool(bool),
     Number(f64),
-    String(String),
+    String(Rc<str>),
 }
 
 impl Display for Value {

@@ -1,23 +1,23 @@
 use std::rc::Rc;
 
-pub struct Scanner {
-    pub src: Rc<str>,
+pub struct Scanner<'src> {
+    pub src: &'src str,
     pub start: usize,
     pub current: usize,
     pub line: usize,
 }
 
-impl Scanner {
-    pub fn new(src: &str) -> Self {
+impl<'src> Scanner<'src> {
+    pub fn new(src: &'src str) -> Self {
         Self {
-            src: src.into(),
+            src: src,
             start: 0,
             current: 0,
             line: 1,
         }
     }
 
-    pub fn scan(&mut self) -> Token {
+    pub fn scan(&mut self) -> Token<'src> {
         self.skip_whitespace();
         self.start = self.current;
         if self.is_at_end() {
@@ -111,7 +111,7 @@ impl Scanner {
         }
     }
 
-    fn string(&mut self) -> Token {
+    fn string(&mut self) -> Token<'src> {
         while self.peek() != b'"' && !self.is_at_end() {
             if self.peek() == b'\n' {
                 self.line += 1;
@@ -126,7 +126,7 @@ impl Scanner {
         self.make_token(TokenType::String)
     }
 
-    fn number(&mut self) -> Token {
+    fn number(&mut self) -> Token<'src> {
         while is_digit(self.peek()) {
             self.advance();
         }
@@ -141,7 +141,7 @@ impl Scanner {
         self.make_token(TokenType::Number)
     }
 
-    fn identifier(&mut self) -> Token {
+    fn identifier(&mut self) -> Token<'src> {
         while is_alpha(self.peek()) || is_digit(self.peek()){
             self.advance();
         }
@@ -171,22 +171,22 @@ impl Scanner {
         }
     }
 
-    fn lexeme(&self) -> &str {
+    fn lexeme(&self) -> &'src str {
         &self.src[self.start..self.current]
     }
 
-    fn make_token(&self, kind: TokenType) -> Token {
+    fn make_token(&self, kind: TokenType) -> Token<'src> {
         Token {
             kind,
-            lexeme: self.lexeme().into(),
+            lexeme: self.lexeme(),
             line: self.line,
         }
     }
 
-    fn error_token(&self, msg: &str) -> Token {
+    fn error_token(&self, msg: &'src str) -> Token<'src> {
         Token {
             kind: TokenType::Error,
-            lexeme: msg.into(),
+            lexeme: msg,
             line: self.line,
         }
     }
@@ -244,18 +244,18 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Debug, Clone)]
-pub struct Token {
+#[derive(Debug, Copy, Clone)]
+pub struct Token<'src> {
     pub kind: TokenType,
-    pub lexeme: Rc<str>,
+    pub lexeme: &'src str,
     pub line: usize,
 }
 
-impl Token {
-    pub fn new(kind: TokenType, lexeme: &str, line: usize) -> Self {
+impl<'src> Token<'src> {
+    pub fn new(kind: TokenType, lexeme: &'src str, line: usize) -> Self {
         Self {
             kind, 
-            lexeme: lexeme.into(),
+            lexeme,
             line,
         }
     }
