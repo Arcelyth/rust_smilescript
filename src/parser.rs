@@ -1,6 +1,10 @@
+use std::mem;
+use std::rc::Rc;
+
 use crate::chunk::*;
 use crate::compiler::*;
 use crate::debug::Disassembler;
+use crate::object::*;
 use crate::scanner::*;
 use crate::value::*;
 
@@ -76,15 +80,17 @@ impl<'c> Parser<'c> {
         }
     }
 
-    // return false if an error occurred
-    pub fn compile(&mut self) -> bool {
+    pub fn compile(&mut self) -> Option<Function> {
         self.advance();
         while !self.match_token(TokenType::Eof) {
             self.declaration();
         }
 
-        self.end_compiler();
-        !self.had_error
+        if self.had_error {
+            None
+        } else {
+            Some(self.end_compiler()?)
+        }
     }
 
     fn match_token(&mut self, kind: TokenType) -> bool {
@@ -149,16 +155,24 @@ impl<'c> Parser<'c> {
         self.compiler.current_chunk()
     }
 
-    fn end_compiler(&mut self) {
+    fn end_compiler(&mut self) -> Option<Function> {
         self.emit_return();
+        let f = self.pop_compiler();
 
+        self.pop_compiler();
         #[cfg(feature = "debug_print_code")]
         {
             if !self.had_error {
+                let name = if self.compiler.function.name != "".into() {
+                    &self.compiler.function.name.clone()
+                } else {
+                    "<script>"
+                };
                 let disassembler = Disassembler::new(self.current_chunk());
-                disassembler.dasm_chunk("code");
+                disassembler.dasm_chunk(name);
             }
         }
+        if self.had_error { None } else { Some(f) }
     }
 
     fn emit_code(&mut self, code: OpCode) -> usize {
@@ -483,12 +497,21 @@ impl<'c> Parser<'c> {
     fn declaration(&mut self) {
         if self.match_token(TokenType::Var) {
             self.var_declaration();
+        } else if self.match_token(TokenType::Fun) {
+            self.fun_declaration();
         } else {
             self.statement();
         }
         if self.panic_mode {
             self.synchronize();
         }
+    }
+
+    fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expect function name.");
+        self.mark_init();
+        self.function(FunctionType::Function);
+        self.define_variable(global);
     }
 
     fn var_declaration(&mut self) {
@@ -520,15 +543,43 @@ impl<'c> Parser<'c> {
 
     fn define_variable(&mut self, idx: u8) {
         if self.compiler.scope_depth > 0 {
-            self.make_init();
+            self.mark_init();
             return;
         }
         self.emit_code(OpCode::DefineGlobal(idx));
     }
 
-    fn make_init(&mut self) {
+    fn mark_init(&mut self) {
+        if self.compiler.scope_depth == 0 {
+            return;
+        }
         let len = self.compiler.locals.len();
         self.compiler.locals[len - 1].depth = self.compiler.scope_depth;
+    }
+
+    fn function(&mut self, fn_ty: FunctionType) {
+        self.push_compiler(fn_ty);
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.compiler.function.arity += 1;
+                if self.compiler.function.arity > 255 {
+                    self.error_at_current("Can't have more then 255 parameters.");
+                }
+                let c = self.parse_variable("Expect parameter name.");
+                self.define_variable(c);
+                if !self.match_token(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.");
+        self.consume(TokenType::LeftBrace, "Expect '{' after function body.");
+        self.block();
+        let f = self.pop_compiler();
+        let v = self.make_constant(Value::Function(Rc::from(f)));
+        self.emit_code(OpCode::Constant(v));
     }
 
     fn declare_variable(&mut self) {
@@ -585,6 +636,22 @@ impl<'c> Parser<'c> {
 
         if can_assign && self.match_token(TokenType::Equal) {
             self.error("Invalid assignment target.");
+        }
+    }
+
+    pub fn push_compiler(&mut self, fn_ty: FunctionType) {
+        let name = self.previous.lexeme;
+        let newc = Compiler::new(name, fn_ty);
+        let oldc = mem::replace(&mut self.compiler, newc);
+        self.compiler.enclosing = Some(Box::new(oldc));
+    }
+
+    pub fn pop_compiler(&mut self) -> Function {
+        if let Some(enclosing_box) = self.compiler.enclosing.take() {
+            let current_compiler = mem::replace(&mut self.compiler, *enclosing_box);
+            current_compiler.function
+        } else {
+            mem::replace(&mut self.compiler.function, Function::new("<script>"))
         }
     }
 

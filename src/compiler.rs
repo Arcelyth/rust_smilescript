@@ -1,25 +1,30 @@
-use crate::scanner::*;
-use crate::parser::*;
 use crate::chunk::*;
+use crate::object::*;
+use crate::parser::*;
+use crate::scanner::*;
 
 pub struct Compiler<'c> {
-    compiling_chunk: &'c mut Chunk,
+    pub enclosing: Option<Box<Compiler<'c>>>,
+    pub function: Function,
+    pub fn_ty: FunctionType,
     pub locals: Vec<Local<'c>>,
     pub scope_depth: i32,
 }
 
 impl<'c> Compiler<'c> {
     pub const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
-    pub fn new(chunk: &'c mut Chunk) -> Self {
+    pub fn new(func_name: &str, fn_ty: FunctionType) -> Self {
         Self {
-            compiling_chunk: chunk,
-            locals: Vec::with_capacity(Self::LOCAL_COUNT), 
+            enclosing: None,
+            function: Function::new(func_name),
+            fn_ty,
+            locals: Vec::with_capacity(Self::LOCAL_COUNT),
             scope_depth: 0,
         }
     }
 
     pub fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.compiling_chunk
+        &mut self.function.chunk
     }
 }
 
@@ -30,9 +35,11 @@ pub struct Local<'src> {
 
 impl<'src> Local<'src> {
     pub fn new(name: Token<'src>, depth: i32) -> Self {
-        Self {
-            name, 
-            depth,
-        }
+        Self { name, depth }
     }
+}
+
+pub enum FunctionType {
+    Function,
+    Script,
 }

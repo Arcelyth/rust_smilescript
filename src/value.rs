@@ -1,23 +1,32 @@
+use crate::object::*;
 use std::fmt::{self, Display};
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Value {
-    Nil, 
+    Nil,
     Bool(bool),
     Number(f64),
     String(Rc<str>),
+    Function(Rc<Function>),
 }
 
 impl Display for Value {
-   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Value::Nil => write!(f, "nil"),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Number(v) => write!(f, "{}", v),
             Value::String(s) => write!(f, "{}", s),
+            Value::Function(v) => {
+                if v.name == "".into() {
+                    write!(f, "<script>")
+                } else {
+                    write!(f, "<fn {}>", v.name)
+                }
+            }
         }
-    } 
+    }
 }
 
 pub fn values_equal(a: Value, b: Value) -> bool {
@@ -29,5 +38,3 @@ pub fn values_equal(a: Value, b: Value) -> bool {
         _ => false,
     }
 }
-
-

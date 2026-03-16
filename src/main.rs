@@ -27,6 +27,9 @@ use scanner::*;
 mod parser;
 use parser::*;
 
+mod object;
+use object::*;
+
 fn main() {
     let mut vm = Vm::new();
     

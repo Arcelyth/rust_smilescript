@@ -29,6 +29,7 @@ pub enum OpCode {
     Loop(u16),
 }
 
+#[derive(Debug, Clone)]
 pub struct Chunk {
     pub code: Vec<OpCode>,
     pub lines: Vec<usize>, 

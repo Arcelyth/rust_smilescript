@@ -7,6 +7,7 @@ use crate::debug::Disassembler;
 use crate::error::*;
 use crate::parser::*;
 use crate::value::*;
+use crate::object::*;
 
 macro_rules! binary_op {
     ($vm:ident, $value_type:ident, $op:tt) => {
@@ -19,44 +20,66 @@ macro_rules! binary_op {
     };
 }
 
+pub struct CallFrame {
+    function: Rc<Function>,
+    ip: usize, 
+    slot: usize,
+}
+
+impl CallFrame {
+    fn new(func: Rc<Function>, slot: usize) -> Self {
+        Self {
+            function: func,
+            ip: 0, 
+            slot,
+        }
+    }
+}
+
 pub struct Vm {
+    pub frames: Vec<CallFrame>,
     pub chunk: Chunk,
-    pub ip: usize,
     pub stack: Vec<Value>,
     pub globals: HashMap<Rc<str>, Value>,
 }
 
 impl Vm {
     const STACK_MAX: usize = 256;
+    const FRAME_MAX: usize = 64;
 
     pub fn new() -> Self {
         Self {
+            frames: Vec::with_capacity(Self::FRAME_MAX),
             chunk: Chunk::new(),
-            ip: 0,
             stack: Vec::with_capacity(Self::STACK_MAX),
             globals: HashMap::new(),
         }
     }
 
     pub fn interpret(&mut self, src: &str) -> Result<(), SmsError> {
-        let mut chunk = Chunk::new();
-        let compiler = Compiler::new(&mut chunk);
+        let compiler = Compiler::new("", FunctionType::Script);
         let mut parser = Parser::new(src, compiler);
 
-        if !parser.compile() {
+        let function = parser.compile(); 
+        if let Some(f) = function {
+            self.push(Value::Function(Rc::from(f.clone())));
+            self.frames.push(CallFrame::new(Rc::from(f.clone()), 0));
+            self.run()
+        } else {
             return Err(SmsError::CompileError);
         }
-        self.chunk = chunk;
-        self.ip = 0;
-        self.run()
     }
 
+
     pub fn read_byte(&mut self) -> OpCode {
-        self.ip += 1;
-        self.chunk.code[self.ip - 1]
+        let frame = self.current_frame_mut();
+        let code = frame.function.chunk.code[frame.ip];
+        frame.ip += 1; 
+        code
     }
 
     pub fn run(&mut self) -> Result<(), SmsError> {
+
         loop {
             #[cfg(feature = "debug_trace_execution")]
             {
@@ -65,12 +88,12 @@ impl Vm {
                     print!("[ {} ]", i);
                 }
                 println!();
-                let disassembler = Disassembler::new(&self.chunk);
-                disassembler.dasm_instruction(self.ip, &self.chunk.code[self.ip])
+                let disassembler = Disassembler::new(&self.current_frame().function.chunk);
+                disassembler.dasm_instruction(self.current_frame().ip, &self.current_frame().function.chunk.code[self.current_frame().ip])
             }
             match self.read_byte() {
                 OpCode::Constant(c) => {
-                    let v = self.chunk.constants[c as usize].clone();
+                    let v = self.current_chunk().constants[c as usize].clone();
                     self.push(v);
                 }
                 OpCode::Print => println!("{}", self.pop()),
@@ -84,7 +107,8 @@ impl Vm {
                     self.pop();
                 }
                 OpCode::GetLocal(slot) => {
-                    let v = &self.stack[slot as usize];
+                    let idx = slot as usize + self.current_frame().slot;
+                    let v = &self.stack[idx];
                     self.push(v.clone());
                 }
                 OpCode::SetLocal(slot) => {
@@ -153,11 +177,13 @@ impl Vm {
                 }
                 OpCode::JumpIfFalse(offset) => {
                     if self.is_falsey(&self.peek(0)) {
-                        self.ip += offset as usize;
+                        self.current_frame_mut().ip += offset as usize;
                     }
                 }
-                OpCode::Jump(offset) => self.ip += offset as usize,
-                OpCode::Loop(offset) => self.ip -= offset as usize,
+                OpCode::Jump(offset) => {
+                    self.current_frame_mut().ip += offset as usize;
+                }
+                OpCode::Loop(offset) => self.current_frame_mut().ip -= offset as usize,
                 _ => return Ok(()),
             }
         }
@@ -185,18 +211,31 @@ impl Vm {
     }
 
     pub fn read_string(&self, idx: u8) -> Rc<str> {
-        if let Value::String(s) = &self.chunk.constants[idx as usize] {
+        if let Value::String(s) = &self.current_frame().function.chunk.constants[idx as usize] {
             s.clone()
         } else {
             panic!("Constant is not String!")
         }
     }
 
+    fn current_frame(&self) -> &CallFrame {
+        self.frames.last().unwrap()
+    }
+
+    fn current_frame_mut(&mut self) -> &mut CallFrame {
+        self.frames.last_mut().unwrap()
+    }
+
+    fn current_chunk(&self) -> &Chunk {
+        &self.current_frame().function.chunk
+    }
+
     pub fn runtime_error(&self, msg: &str) -> Result<(), SmsError> {
         eprintln!("{}", msg);
-        let idx = self.ip - 1;
-        let line = self.chunk.lines[idx];
+        let idx = self.current_frame().ip - 1;
+        let line = self.current_chunk().lines[idx];
         eprintln!("[line {}] in script", line);
         Err(SmsError::RuntimeError)
     }
 }
+
