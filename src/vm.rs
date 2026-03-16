@@ -5,9 +5,9 @@ use crate::chunk::*;
 use crate::compiler::*;
 use crate::debug::Disassembler;
 use crate::error::*;
+use crate::object::*;
 use crate::parser::*;
 use crate::value::*;
-use crate::object::*;
 
 macro_rules! binary_op {
     ($vm:ident, $value_type:ident, $op:tt) => {
@@ -22,7 +22,7 @@ macro_rules! binary_op {
 
 pub struct CallFrame {
     function: Rc<Function>,
-    ip: usize, 
+    ip: usize,
     slot: usize,
 }
 
@@ -30,7 +30,7 @@ impl CallFrame {
     fn new(func: Rc<Function>, slot: usize) -> Self {
         Self {
             function: func,
-            ip: 0, 
+            ip: 0,
             slot,
         }
     }
@@ -60,26 +60,24 @@ impl Vm {
         let compiler = Compiler::new("", FunctionType::Script);
         let mut parser = Parser::new(src, compiler);
 
-        let function = parser.compile(); 
+        let function = parser.compile();
         if let Some(f) = function {
             self.push(Value::Function(Rc::from(f.clone())));
-            self.frames.push(CallFrame::new(Rc::from(f.clone()), 0));
+            self.call(Rc::from(f.clone()), 0);
             self.run()
         } else {
             return Err(SmsError::CompileError);
         }
     }
 
-
     pub fn read_byte(&mut self) -> OpCode {
         let frame = self.current_frame_mut();
         let code = frame.function.chunk.code[frame.ip];
-        frame.ip += 1; 
+        frame.ip += 1;
         code
     }
 
     pub fn run(&mut self) -> Result<(), SmsError> {
-
         loop {
             #[cfg(feature = "debug_trace_execution")]
             {
@@ -89,7 +87,10 @@ impl Vm {
                 }
                 println!();
                 let disassembler = Disassembler::new(&self.current_frame().function.chunk);
-                disassembler.dasm_instruction(self.current_frame().ip, &self.current_frame().function.chunk.code[self.current_frame().ip])
+                disassembler.dasm_instruction(
+                    self.current_frame().ip,
+                    &self.current_frame().function.chunk.code[self.current_frame().ip],
+                )
             }
             match self.read_byte() {
                 OpCode::Constant(c) => {
@@ -98,7 +99,14 @@ impl Vm {
                 }
                 OpCode::Print => println!("{}", self.pop()),
                 OpCode::Return => {
-                    return Ok(());
+                    let res = self.pop();
+                    let frame = self.frames.pop().expect("No frame to pop.");
+                    if self.frames.len() == 0 {
+                        self.pop();
+                        return Ok(());
+                    }
+                    self.stack.truncate(frame.slot);
+                    self.push(res);
                 }
                 OpCode::Nil => self.push(Value::Nil),
                 OpCode::True => self.push(Value::Bool(true)),
@@ -112,7 +120,8 @@ impl Vm {
                     self.push(v.clone());
                 }
                 OpCode::SetLocal(slot) => {
-                    self.stack[slot as usize] = self.peek(0);
+                    let idx = self.current_frame().slot + slot as usize;
+                    self.stack[idx] = self.peek(0);
                 }
                 OpCode::SetGlobal(idx) => {
                     let name = self.read_string(idx);
@@ -184,6 +193,11 @@ impl Vm {
                     self.current_frame_mut().ip += offset as usize;
                 }
                 OpCode::Loop(offset) => self.current_frame_mut().ip -= offset as usize,
+                OpCode::Call(arg_count) => {
+                    if !self.call_value(self.peek(arg_count as usize), arg_count as usize) {
+                        return Err(SmsError::RuntimeError);
+                    }
+                }
                 _ => return Ok(()),
             }
         }
@@ -230,12 +244,50 @@ impl Vm {
         &self.current_frame().function.chunk
     }
 
-    pub fn runtime_error(&self, msg: &str) -> Result<(), SmsError> {
+    fn call_value(&mut self, callee: Value, arg_count: usize) -> bool {
+        match callee {
+            Value::Function(f) => self.call(f, arg_count),
+            _ => {
+                self.runtime_error("Can only call functions and classes");
+                false
+            }
+        }
+    }
+
+    fn call(&mut self, func: Rc<Function>, arg_count: usize) -> bool {
+        if arg_count != func.arity {
+            self.runtime_error(
+                format!("Expected {} arguments but got {}.", func.arity, arg_count).as_str(),
+            );
+            return false;
+        }
+
+        if self.frames.len() == Self::FRAME_MAX {
+            self.runtime_error("Stack overflow.");
+            return false;
+        }
+        let stack_len = self.stack.len();
+        self.frames
+            .push(CallFrame::new(func, stack_len - arg_count - 1));
+        true
+    }
+
+    pub fn runtime_error(&mut self, msg: &str) -> Result<(), SmsError> {
         eprintln!("{}", msg);
-        let idx = self.current_frame().ip - 1;
-        let line = self.current_chunk().lines[idx];
-        eprintln!("[line {}] in script", line);
+
+        for frame in self.frames.iter().rev() {
+            let inst = if frame.ip > 0 { frame.ip - 1 } else { 0 };
+            let line = frame.function.chunk.lines[inst];
+
+            let name = if frame.function.name.is_empty() {
+                "script".to_string()
+            } else {
+                format!("{}()", frame.function.name)
+            };
+            eprintln!("[line {}] in {}", line, name);
+        }
+
+        self.frames.clear();
         Err(SmsError::RuntimeError)
     }
 }
-

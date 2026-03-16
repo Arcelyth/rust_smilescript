@@ -49,6 +49,7 @@ impl<'c> Disassembler<'c> {
             OpCode::JumpIfFalse(o) => self.jump_instruction("OP_JUMP_IF_FALSE", 1, *o, offset),
             OpCode::Jump(o) => self.jump_instruction("OP_JUMP", 1, *o, offset),
             OpCode::Loop(o) => self.jump_instruction("OP_LOOP", -1, *o, offset),
+            OpCode::Call(arg_count) => self.byte_instruction("OP_CALL", *arg_count),
             _ => println!("Unknown opcode: {:?}", code),
         }
     }
