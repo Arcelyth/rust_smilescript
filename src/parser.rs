@@ -407,6 +407,8 @@ impl<'c> Parser<'c> {
             self.while_statement();
         } else if self.match_token(TokenType::For) {
             self.for_statement();
+        } else if self.match_token(TokenType::Return) {
+            self.return_statement();
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -488,6 +490,16 @@ impl<'c> Parser<'c> {
             self.emit_code(OpCode::Pop);
         }
         self.end_scope();
+    }
+
+    fn return_statement(&mut self) {
+        if self.match_token(TokenType::Semicolon) {
+            self.emit_return();
+        } else {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' return value.");
+            self.emit_code(OpCode::Return);
+        }
     }
 
     fn emit_loop(&mut self, start_pos: usize) {
