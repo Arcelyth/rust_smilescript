@@ -46,6 +46,8 @@ impl<'c> Disassembler<'c> {
             OpCode::Subtract => println!("OP_SUBTRACT"),
             OpCode::Multiply => println!("OP_MULTIPLY"),
             OpCode::Divide => println!("OP_DIVIDE"),
+            OpCode::JumpIfFalse(offset) => self.jump_instruction("OP_JUMP", *offset),
+            OpCode::Jump(offset) => self.jump_instruction("OP_JUMP", *offset),
             _ => println!("Unknown opcode: {:?}", code),
         }
     }
@@ -60,6 +62,13 @@ impl<'c> Disassembler<'c> {
     pub fn byte_instruction(&self, name: &str, offset: u8) {
         println!(
             "{:<16} {:4} {:?}",
+            name, offset, self.chunk.code[offset as usize + 1]
+        );
+    }
+
+    pub fn jump_instruction(&self, name: &str, offset: u16) {
+        println!(
+            "{:<16} {:4} -> {:?}",
             name, offset, self.chunk.code[offset as usize + 1]
         );
     }

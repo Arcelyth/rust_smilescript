@@ -152,6 +152,12 @@ impl Vm {
                     let v = self.pop();
                     self.push(Value::Bool(self.is_falsey(&v)));
                 }
+                OpCode::JumpIfFalse(offset) => {
+                    if self.is_falsey(&self.peek(0)) {
+                        self.ip += offset as usize;
+                    }
+                }
+                OpCode::Jump(offset) => self.ip += offset as usize,
                 _ => return Ok(()),
             }
         }

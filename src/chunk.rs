@@ -24,6 +24,8 @@ pub enum OpCode {
     Multiply,
     Divide,
     Not,
+    JumpIfFalse(u16),
+    Jump(u16),
 }
 
 pub struct Chunk {
@@ -41,9 +43,10 @@ impl Chunk {
         }
     }
     
-    pub fn write(&mut self, op_code: OpCode, line: usize) {
+    pub fn write(&mut self, op_code: OpCode, line: usize) -> usize {
         self.code.push(op_code);
         self.lines.push(line);
+        self.code.len() - 1
     }
 
     pub fn add_constant(&mut self, value: Value) -> usize {

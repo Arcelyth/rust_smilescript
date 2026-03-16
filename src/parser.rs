@@ -161,9 +161,9 @@ impl<'c> Parser<'c> {
         }
     }
 
-    fn emit_code(&mut self, code: OpCode) {
+    fn emit_code(&mut self, code: OpCode) -> usize {
         let line = self.previous.line;
-        self.current_chunk().write(code, line);
+        self.current_chunk().write(code, line)
     }
 
     fn emit_return(&mut self) {
@@ -201,8 +201,12 @@ impl<'c> Parser<'c> {
         self.parse_precedence(Precedence::Unary);
 
         match kind {
-            TokenType::Minus => self.emit_code(OpCode::Negate),
-            TokenType::Bang => self.emit_code(OpCode::Not),
+            TokenType::Minus => {
+                self.emit_code(OpCode::Negate);
+            }
+            TokenType::Bang => {
+                self.emit_code(OpCode::Not);
+            }
             _ => (),
         }
     }
@@ -213,21 +217,35 @@ impl<'c> Parser<'c> {
         self.parse_precedence(rule.prec.next());
 
         match kind {
-            TokenType::Plus => self.emit_code(OpCode::Add),
-            TokenType::Minus => self.emit_code(OpCode::Subtract),
-            TokenType::Star => self.emit_code(OpCode::Multiply),
-            TokenType::Slash => self.emit_code(OpCode::Divide),
+            TokenType::Plus => {
+                self.emit_code(OpCode::Add);
+            }
+            TokenType::Minus => {
+                self.emit_code(OpCode::Subtract);
+            }
+            TokenType::Star => {
+                self.emit_code(OpCode::Multiply);
+            }
+            TokenType::Slash => {
+                self.emit_code(OpCode::Divide);
+            }
             TokenType::BangEqual => {
                 self.emit_code(OpCode::Equal);
                 self.emit_code(OpCode::Not);
             }
-            TokenType::Equal => self.emit_code(OpCode::Equal),
-            TokenType::Greater => self.emit_code(OpCode::Greater),
+            TokenType::Equal => {
+                self.emit_code(OpCode::Equal);
+            }
+            TokenType::Greater => {
+                self.emit_code(OpCode::Greater);
+            }
             TokenType::GreaterEqual => {
                 self.emit_code(OpCode::Less);
                 self.emit_code(OpCode::Not);
             }
-            TokenType::Less => self.emit_code(OpCode::Less),
+            TokenType::Less => {
+                self.emit_code(OpCode::Less);
+            }
             TokenType::LessEqual => {
                 self.emit_code(OpCode::Greater);
                 self.emit_code(OpCode::Not);
@@ -281,9 +299,15 @@ impl<'c> Parser<'c> {
 
     fn literal(&mut self, _can_assign: bool) {
         match self.previous.kind {
-            TokenType::False => self.emit_code(OpCode::False),
-            TokenType::Nil => self.emit_code(OpCode::Nil),
-            TokenType::True => self.emit_code(OpCode::True),
+            TokenType::False => {
+                self.emit_code(OpCode::False);
+            }
+            TokenType::Nil => {
+                self.emit_code(OpCode::Nil);
+            }
+            TokenType::True => {
+                self.emit_code(OpCode::True);
+            }
             _ => (),
         }
     }
@@ -327,6 +351,8 @@ impl<'c> Parser<'c> {
     fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
+        } else if self.match_token(TokenType::If) {
+            self.if_statement();
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -340,6 +366,36 @@ impl<'c> Parser<'c> {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
         self.emit_code(OpCode::Print);
+    }
+
+    fn if_statement(&mut self) {
+        self.consume(TokenType::LeftParen, "Expect '(' fater if.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+        let then_jump = self.emit_code(OpCode::JumpIfFalse(0xffff));
+        self.emit_code(OpCode::Pop);
+        self.statement();
+        let else_jump = self.emit_code(OpCode::Jump(0xffff));
+        self.patch_jump(then_jump);
+        self.emit_code(OpCode::Pop);
+
+        if self.match_token(TokenType::Else)  {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
+    }
+
+    fn patch_jump(&mut self, offset: usize) {
+        let jump = self.current_chunk().code.len() - 1 - offset;
+        if let Ok(o) = u16::try_from(jump) {
+            match self.current_chunk().code[offset] {
+                OpCode::JumpIfFalse(ref mut p) => *p = o,
+                OpCode::Jump(ref mut p) => *p = o,
+                _ => self.error("Offset is not jump instruction.")
+            }
+        } else {
+            self.error("Too much code to jump over.");
+        }
     }
 
     fn expression_statement(&mut self) {
