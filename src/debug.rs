@@ -31,8 +31,8 @@ impl<'c> Disassembler<'c> {
             OpCode::True => println!("OP_TRUE"),
             OpCode::False => println!("OP_FALSE"),
             OpCode::Pop => println!("OP_POP"),
-            OpCode::SetLocal(c) => self.byte_instruction("OP_SET_LOCAL", *c), 
-            OpCode::GetLocal(c) => self.byte_instruction("OP_GET_LOCAL", *c), 
+            OpCode::SetLocal(c) => self.byte_instruction("OP_SET_LOCAL", *c),
+            OpCode::GetLocal(c) => self.byte_instruction("OP_GET_LOCAL", *c),
             OpCode::SetGlobal(c) => self.const_instruction("OP_SET_GLOBAL", *c),
             OpCode::GetGlobal(c) => self.const_instruction("OP_GET_GLOBAL", *c),
             OpCode::DefineGlobal(c) => self.const_instruction("OP_DEFINE_GLOBAL", *c),
@@ -46,8 +46,9 @@ impl<'c> Disassembler<'c> {
             OpCode::Subtract => println!("OP_SUBTRACT"),
             OpCode::Multiply => println!("OP_MULTIPLY"),
             OpCode::Divide => println!("OP_DIVIDE"),
-            OpCode::JumpIfFalse(offset) => self.jump_instruction("OP_JUMP", *offset),
-            OpCode::Jump(offset) => self.jump_instruction("OP_JUMP", *offset),
+            OpCode::JumpIfFalse(o) => self.jump_instruction("OP_JUMP_IF_FALSE", 1, *o, offset),
+            OpCode::Jump(o) => self.jump_instruction("OP_JUMP", 1, *o, offset),
+            OpCode::Loop(o) => self.jump_instruction("OP_LOOP", -1, *o, offset),
             _ => println!("Unknown opcode: {:?}", code),
         }
     }
@@ -60,17 +61,15 @@ impl<'c> Disassembler<'c> {
     }
 
     pub fn byte_instruction(&self, name: &str, offset: u8) {
-        println!(
-            "{:<16} {:4} {:?}",
-            name, offset, self.chunk.code[offset as usize + 1]
-        );
+        println!("{:<16} {:4}", name, offset);
     }
 
-    pub fn jump_instruction(&self, name: &str, offset: u16) {
-        println!(
-            "{:<16} {:4} -> {:?}",
-            name, offset, self.chunk.code[offset as usize + 1]
-        );
+    pub fn jump_instruction(&self, name: &str, sign: i16, offset: u16, pos: usize) {
+        let jump_to = if sign == 1 {
+            pos + 1 + offset as usize
+        } else {
+            pos + 1 - offset as usize
+        };
+        println!("{:<16} {:4} -> {}", name, pos, jump_to);
     }
-
 }

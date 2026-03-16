@@ -312,9 +312,21 @@ impl<'c> Parser<'c> {
         }
     }
 
-    fn and(&mut self, _can_assign: bool) {}
+    fn and(&mut self, _can_assign: bool) {
+        let end_jump = self.emit_code(OpCode::JumpIfFalse(0xffff));
+        self.emit_code(OpCode::Pop);
+        self.parse_precedence(Precedence::And);
+        self.patch_jump(end_jump);
+    }
 
-    fn or(&mut self, _can_assign: bool) {}
+    fn or(&mut self, _can_assign: bool) {
+        let else_jump = self.emit_code(OpCode::JumpIfFalse(0xffff));
+        let end_jump = self.emit_code(OpCode::Jump(0xffff));
+        self.patch_jump(else_jump);
+        self.emit_code(OpCode::Pop);
+        self.parse_precedence(Precedence::And);
+        self.patch_jump(end_jump);
+    }
 
     fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
@@ -353,6 +365,10 @@ impl<'c> Parser<'c> {
             self.print_statement();
         } else if self.match_token(TokenType::If) {
             self.if_statement();
+        } else if self.match_token(TokenType::While) {
+            self.while_statement();
+        } else if self.match_token(TokenType::For) {
+            self.for_statement();
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -379,10 +395,70 @@ impl<'c> Parser<'c> {
         self.patch_jump(then_jump);
         self.emit_code(OpCode::Pop);
 
-        if self.match_token(TokenType::Else)  {
+        if self.match_token(TokenType::Else) {
             self.statement();
         }
         self.patch_jump(else_jump);
+    }
+
+    fn while_statement(&mut self) {
+        let loop_start = self.current_chunk().code.len();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+        let exit_jump = self.emit_code(OpCode::JumpIfFalse(0xffff));
+        self.emit_code(OpCode::Pop);
+        self.statement();
+        self.emit_loop(loop_start);
+        self.patch_jump(exit_jump);
+        self.emit_code(OpCode::Pop);
+    }
+
+    fn for_statement(&mut self) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+        if self.match_token(TokenType::Semicolon) {
+        } else if self.match_token(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.expression_statement();
+        }
+        let mut loop_start = self.current_chunk().code.len();
+        let mut exit_jump: i32 = -1;
+        if !self.match_token(TokenType::Semicolon) {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after loop condition.");
+            exit_jump = self.emit_code(OpCode::JumpIfFalse(0xffff)) as i32;
+            self.emit_code(OpCode::Pop);
+        }
+
+        if !self.match_token(TokenType::RightParen) {
+            let body_jump = self.emit_code(OpCode::Jump(0xffff));
+            let incr_start = self.current_chunk().code.len();
+            self.expression();
+            self.emit_code(OpCode::Pop);
+            self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
+            self.emit_loop(loop_start);
+            loop_start = incr_start;
+            self.patch_jump(body_jump);
+        }
+        self.statement();
+        self.emit_loop(loop_start);
+
+        if exit_jump != -1 {
+            self.patch_jump(exit_jump as usize);
+            self.emit_code(OpCode::Pop);
+        }
+        self.end_scope();
+    }
+
+    fn emit_loop(&mut self, start_pos: usize) {
+        let offset = self.current_chunk().code.len() - start_pos + 1;
+        if let Ok(o) = u16::try_from(offset) {
+            self.emit_code(OpCode::Loop(o));
+        } else {
+            self.error("Loop body too large.");
+        }
     }
 
     fn patch_jump(&mut self, offset: usize) {
@@ -391,7 +467,7 @@ impl<'c> Parser<'c> {
             match self.current_chunk().code[offset] {
                 OpCode::JumpIfFalse(ref mut p) => *p = o,
                 OpCode::Jump(ref mut p) => *p = o,
-                _ => self.error("Offset is not jump instruction.")
+                _ => self.error("Offset is not jump instruction."),
             }
         } else {
             self.error("Too much code to jump over.");

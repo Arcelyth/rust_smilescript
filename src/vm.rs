@@ -136,7 +136,6 @@ impl Vm {
                                 .runtime_error("Operands must be two numbers or two strings.");
                         }
                     }
-                    binary_op!(self, Number, +)
                 }
                 OpCode::Subtract => binary_op!(self, Number, -),
                 OpCode::Multiply => binary_op!(self, Number, *),
@@ -158,6 +157,7 @@ impl Vm {
                     }
                 }
                 OpCode::Jump(offset) => self.ip += offset as usize,
+                OpCode::Loop(offset) => self.ip -= offset as usize,
                 _ => return Ok(()),
             }
         }

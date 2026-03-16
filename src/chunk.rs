@@ -26,6 +26,7 @@ pub enum OpCode {
     Not,
     JumpIfFalse(u16),
     Jump(u16),
+    Loop(u16),
 }
 
 pub struct Chunk {
