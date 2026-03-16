@@ -9,6 +9,7 @@ pub enum Value {
     Number(f64),
     String(Rc<str>),
     Function(Rc<Function>),
+    Native(Rc<NativeFunction>),
 }
 
 impl Display for Value {
@@ -24,6 +25,9 @@ impl Display for Value {
                 } else {
                     write!(f, "<fn {}>", v.name)
                 }
+            }
+            Value::Native(n) => {
+                write!(f, "<native fn>")
             }
         }
     }

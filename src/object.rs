@@ -1,5 +1,8 @@
 use std::rc::Rc;
+
+use crate::value::*;
 use crate::chunk::*;
+use crate::vm::*;
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -17,3 +20,8 @@ impl Function {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct NativeFunction(pub fn(&[Value]) -> Value);
+
+

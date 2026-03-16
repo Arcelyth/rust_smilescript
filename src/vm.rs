@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::chunk::*;
 use crate::compiler::*;
@@ -48,12 +49,14 @@ impl Vm {
     const FRAME_MAX: usize = 64;
 
     pub fn new() -> Self {
-        Self {
+        let mut vm = Self {
             frames: Vec::with_capacity(Self::FRAME_MAX),
             chunk: Chunk::new(),
             stack: Vec::with_capacity(Self::STACK_MAX),
             globals: HashMap::new(),
-        }
+        };
+        vm.define_native("clock", NativeFunction(clock_native));
+        vm
     }
 
     pub fn interpret(&mut self, src: &str) -> Result<(), SmsError> {
@@ -247,6 +250,13 @@ impl Vm {
     fn call_value(&mut self, callee: Value, arg_count: usize) -> bool {
         match callee {
             Value::Function(f) => self.call(f, arg_count),
+            Value::Native(native) => {
+                let offset = self.stack.len() - arg_count;
+                let res = native.0(&self.stack[offset..]);
+                self.stack.truncate(offset - 1);
+                self.push(res);
+                true
+            }
             _ => {
                 self.runtime_error("Can only call functions and classes");
                 false
@@ -272,6 +282,10 @@ impl Vm {
         true
     }
 
+    fn define_native(&mut self, name: &str, func: NativeFunction) {
+        self.globals.insert(Rc::from(name), Value::Native(Rc::from(func)));
+    }
+
     pub fn runtime_error(&mut self, msg: &str) -> Result<(), SmsError> {
         eprintln!("{}", msg);
 
@@ -290,4 +304,13 @@ impl Vm {
         self.frames.clear();
         Err(SmsError::RuntimeError)
     }
+}
+
+pub fn clock_native(_args: &[Value]) -> Value {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    
+    Value::Number(since_the_epoch.as_secs_f64())
 }
