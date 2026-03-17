@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-#default = ["debug_trace_execution", "debug_print_code"]
-default = []
+default = ["debug_trace_execution", "debug_print_code"]
+#default = []
 debug_trace_execution = []
 debug_print_code = []
 

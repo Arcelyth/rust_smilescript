@@ -9,6 +9,7 @@ pub enum Value {
     Number(f64),
     String(Rc<str>),
     Function(Rc<Function>),
+    Closure(Rc<Closure>),
     Native(Rc<NativeFunction>),
 }
 
@@ -28,6 +29,14 @@ impl Display for Value {
             }
             Value::Native(n) => {
                 write!(f, "<native fn>")
+            }
+            Value::Closure(c) => {
+                let v = c.function.clone();
+                if v.name == "".into() {
+                    write!(f, "<script>")
+                } else {
+                    write!(f, "<fn {}>", v.name)
+                }
             }
         }
     }

@@ -285,6 +285,9 @@ impl<'c> Parser<'c> {
         if let Some(idx) = self.resolve_local(name) {
             get_op = OpCode::GetLocal(idx);
             set_op = OpCode::SetLocal(idx);
+        } else if let Some(idx) = self.resolve_upvalue(name) {
+            get_op = OpCode::GetUpValue(idx);
+            set_op = OpCode::SetUpValue(idx);
         } else {
             let index = self.identifier_constant(name);
             get_op = OpCode::GetGlobal(index);
@@ -300,16 +303,23 @@ impl<'c> Parser<'c> {
     }
 
     fn resolve_local(&mut self, name: Token) -> Option<u8> {
-        for i in (0..self.compiler.locals.len()).rev() {
-            let local = &self.compiler.locals[i];
-            if local.name.lexeme == name.lexeme {
-                if local.depth == -1 {
-                    self.error("Can't read local variable in its own initializer.");
-                }
-                return Some(i as u8);
+        match self.compiler.resolve_local(name) {
+            Ok(r) => r,
+            Err(s) => {
+                self.error(&s);
+                None
             }
         }
-        None
+    }
+
+    fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
+        match self.compiler.resolve_upvalue(name) {
+            Ok(r) => r,
+            Err(s) => {
+                self.error(&s);
+                None
+            }
+        }
     }
 
     fn string(&mut self, _can_assign: bool) {
@@ -615,7 +625,7 @@ impl<'c> Parser<'c> {
         self.block();
         let f = self.pop_compiler();
         let v = self.make_constant(Value::Function(Rc::from(f)));
-        self.emit_code(OpCode::Constant(v));
+        self.emit_code(OpCode::Closure(v));
     }
 
     fn declare_variable(&mut self) {

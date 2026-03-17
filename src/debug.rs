@@ -1,4 +1,5 @@
 use crate::chunk::*;
+use crate::value::*;
 
 pub struct Disassembler<'c> {
     pub chunk: &'c Chunk,
@@ -35,6 +36,9 @@ impl<'c> Disassembler<'c> {
             OpCode::GetLocal(c) => self.byte_instruction("OP_GET_LOCAL", *c),
             OpCode::SetGlobal(c) => self.const_instruction("OP_SET_GLOBAL", *c),
             OpCode::GetGlobal(c) => self.const_instruction("OP_GET_GLOBAL", *c),
+            OpCode::SetUpValue(c) => self.byte_instruction("OP_SET_UPVALUE", *c),
+            OpCode::GetUpValue(c) => self.byte_instruction("OP_GET_UPVALUE", *c),
+
             OpCode::DefineGlobal(c) => self.const_instruction("OP_DEFINE_GLOBAL", *c),
             OpCode::Equal => println!("OP_EQUAL"),
             OpCode::Greater => println!("OP_GREATER"),
@@ -50,6 +54,20 @@ impl<'c> Disassembler<'c> {
             OpCode::Jump(o) => self.jump_instruction("OP_JUMP", 1, *o, offset),
             OpCode::Loop(o) => self.jump_instruction("OP_LOOP", -1, *o, offset),
             OpCode::Call(arg_count) => self.byte_instruction("OP_CALL", *arg_count),
+            OpCode::Closure(c) => {
+                self.const_instruction("OP_CLOSURE", *c);
+                match self.chunk.constants[*c as usize].clone() {
+                    Value::Function(f) => {
+                        for (_, upvalue) in f.upvalues.iter().enumerate() {
+                            let is_local = if upvalue.is_local { "local" } else { "upvalue" };
+                            let idx = upvalue.index;
+                            println!("{:04}    |              {} {}", offset, is_local, idx);
+                        }
+                    }
+                    _ => (),
+                }
+            }
+
             _ => println!("Unknown opcode: {:?}", code),
         }
     }

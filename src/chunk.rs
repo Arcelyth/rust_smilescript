@@ -15,6 +15,8 @@ pub enum OpCode {
     SetLocal(u8),
     SetGlobal(u8),
     GetGlobal(u8),
+    SetUpValue(u8),
+    GetUpValue(u8),
     DefineGlobal(u8),
     Equal,
     Greater,
@@ -28,6 +30,7 @@ pub enum OpCode {
     Jump(u16),
     Loop(u16),
     Call(u8),
+    Closure(u8),
 }
 
 #[derive(Debug, Clone)]
