@@ -159,7 +159,6 @@ impl<'c> Parser<'c> {
         self.emit_return();
         let f = self.pop_compiler();
 
-        self.pop_compiler();
         #[cfg(feature = "debug_print_code")]
         {
             if !self.had_error {
@@ -397,7 +396,11 @@ impl<'c> Parser<'c> {
         loop {
             if let Some(l) = self.compiler.locals.last() {
                 if l.depth > self.compiler.scope_depth {
-                    self.emit_code(OpCode::Pop);
+                    if l.is_captured {
+                        self.emit_code(OpCode::CloseUpValue);
+                    } else {
+                        self.emit_code(OpCode::Pop);
+                    }
                     self.compiler.locals.pop();
                 } else {
                     break;
@@ -503,6 +506,9 @@ impl<'c> Parser<'c> {
     }
 
     fn return_statement(&mut self) {
+        if let FunctionType::Script = self.compiler.fn_ty {
+            self.error("Can't return from top-level code.");
+        }
         if self.match_token(TokenType::Semicolon) {
             self.emit_return();
         } else {
@@ -624,7 +630,7 @@ impl<'c> Parser<'c> {
         self.consume(TokenType::LeftBrace, "Expect '{' after function body.");
         self.block();
         let f = self.pop_compiler();
-        let v = self.make_constant(Value::Function(Rc::from(f)));
+        let v = self.make_constant(Value::Function(Rc::from(f.clone())));
         self.emit_code(OpCode::Closure(v));
     }
 
@@ -693,6 +699,7 @@ impl<'c> Parser<'c> {
     }
 
     pub fn pop_compiler(&mut self) -> Function {
+        self.emit_return();
         if let Some(enclosing_box) = self.compiler.enclosing.take() {
             let current_compiler = mem::replace(&mut self.compiler, *enclosing_box);
             current_compiler.function

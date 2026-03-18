@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -41,6 +42,7 @@ pub struct Vm {
     pub frames: Vec<CallFrame>,
     pub stack: Vec<Value>,
     pub globals: HashMap<Rc<str>, Value>,
+    pub open_upvalues: Vec<Rc<RefCell<UpValue>>>,
 }
 
 impl Vm {
@@ -52,6 +54,7 @@ impl Vm {
             frames: Vec::with_capacity(Self::FRAME_MAX),
             stack: Vec::with_capacity(Self::STACK_MAX),
             globals: HashMap::new(),
+            open_upvalues: Vec::with_capacity(Self::STACK_MAX),
         };
         vm.define_native("clock", NativeFunction(clock_native));
         vm
@@ -63,7 +66,6 @@ impl Vm {
 
         let function = parser.compile();
         if let Some(f) = function {
-            self.push(Value::Function(Rc::from(f.clone())));
             let clos = Closure::new(f.into());
             self.push(Value::Closure(Rc::from(clos.clone())));
             self.call(clos.into(), 0);
@@ -104,8 +106,8 @@ impl Vm {
                 OpCode::Return => {
                     let res = self.pop();
                     let frame = self.frames.pop().expect("No frame to pop.");
+                    self.close_upvalues(frame.slot);
                     if self.frames.len() == 0 {
-                        self.pop();
                         return Ok(());
                     }
                     self.stack.truncate(frame.slot);
@@ -118,7 +120,7 @@ impl Vm {
                     self.pop();
                 }
                 OpCode::GetLocal(slot) => {
-                    let idx = slot as usize + self.current_frame().slot;
+                    let idx = self.current_frame().slot + slot as usize;
                     let v = &self.stack[idx];
                     self.push(v.clone());
                 }
@@ -205,14 +207,53 @@ impl Vm {
                     let function = self.current_chunk().constants[c as usize].clone();
                     match function {
                         Value::Function(f) => {
-                            let clos = Closure::new(f);
-                            self.push(Value::Closure(clos.into()));
+                            let mut clos = Closure::new(f.clone());
+                            for (i, _) in f.upvalues.iter().enumerate() {
+                                let upvalue = f.upvalues[i];
+                                let upv = if upvalue.is_local {
+                                    let loc = self.current_frame().slot + upvalue.index as usize;
+                                    self.capture_upvalue(loc)
+                                } else {
+                                    self.current_frame().closure.upvalues[upvalue.index as usize].clone()
+                                };
+                                clos.upvalues.push(upv);
+                            }
+
+                            self.push(Value::Closure(Rc::new(clos.clone())));
                         }
                         _ => {
                             self.runtime_error("Closure without function value.")?;
                         }
                     }
                 }
+                OpCode::GetUpValue(slot) => {
+                    let value = {
+                        let upvalue = self.current_frame().closure.upvalues[slot as usize].clone();
+                        let upvalue_b = upvalue.borrow();
+                        if let Some(value) = &upvalue_b.closed {
+                            value.clone()
+                        } else {
+                            self.stack[upvalue_b.location].clone()
+                        }
+                    };
+                    self.push(value);
+                }
+                OpCode::SetUpValue(slot) => {
+                    let upvalue = self.current_frame().closure.upvalues[slot as usize].clone();
+                    let value = self.peek(0);
+                    let mut upvalue_b = upvalue.borrow_mut();
+                    if upvalue_b.closed.is_none() {
+                        self.stack[upvalue_b.location] = value;
+                    } else {
+                        upvalue_b.closed = Some(value);
+                    }
+                }
+                OpCode::CloseUpValue => {
+                    let pos = self.stack.len() - 1;
+                    self.close_upvalues(pos);
+                    self.pop();
+                }
+
                 _ => return Ok(()),
             }
         }
@@ -240,10 +281,40 @@ impl Vm {
     }
 
     pub fn read_string(&self, idx: u8) -> Rc<str> {
-        if let Value::String(s) = &self.current_frame().closure.function.chunk.constants[idx as usize] {
+        if let Value::String(s) =
+            &self.current_frame().closure.function.chunk.constants[idx as usize]
+        {
             s.clone()
         } else {
             panic!("Constant is not String!")
+        }
+    }
+
+    fn capture_upvalue(&mut self, pos: usize) -> Rc<RefCell<UpValue>> {
+        for upv in &self.open_upvalues {
+            if upv.borrow().location == pos {
+                return upv.clone();
+            }
+        }
+        let upvalue = Rc::new(RefCell::new(UpValue::new(pos)));
+        self.open_upvalues.push(upvalue.clone());
+        upvalue
+    }
+   
+    // takes a stack slot and closes every open upvalue to that slot 
+    fn close_upvalues(&mut self, pos: usize) {
+        let mut i = 0;
+        while i < self.open_upvalues.len() {
+            let upvalue= self.open_upvalues[i].clone();
+            let mut upvalue_b = upvalue.borrow_mut();
+            if upvalue_b.location >= pos {
+                let value_on_stack = self.stack[upvalue_b.location].clone();
+                upvalue_b.closed = Some(value_on_stack);
+                
+                self.open_upvalues.remove(i);
+            } else {
+                i += 1;
+            }
         }
     }
 
@@ -279,7 +350,11 @@ impl Vm {
     fn call(&mut self, clos: Rc<Closure>, arg_count: usize) -> bool {
         if arg_count != clos.function.arity {
             self.runtime_error(
-                format!("Expected {} arguments but got {}.", clos.function.arity, arg_count).as_str(),
+                format!(
+                    "Expected {} arguments but got {}.",
+                    clos.function.arity, arg_count
+                )
+                .as_str(),
             );
             return false;
         }
@@ -289,13 +364,14 @@ impl Vm {
             return false;
         }
         let stack_len = self.stack.len();
-        self.frames
-            .push(CallFrame::new(clos, stack_len - arg_count - 1));
+        // minus one because frame's 0 slot need to be the closure itself
+        self.frames.push(CallFrame::new(clos, stack_len - arg_count - 1));
         true
     }
 
     fn define_native(&mut self, name: &str, func: NativeFunction) {
-        self.globals.insert(Rc::from(name), Value::Native(Rc::from(func)));
+        self.globals
+            .insert(Rc::from(name), Value::Native(Rc::from(func)));
     }
 
     pub fn runtime_error(&mut self, msg: &str) -> Result<(), SmsError> {
@@ -323,6 +399,6 @@ pub fn clock_native(_args: &[Value]) -> Value {
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
-    
+
     Value::Number(since_the_epoch.as_secs_f64())
 }

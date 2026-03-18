@@ -1,13 +1,22 @@
+var x = "global";
 fun outer() {
-    var a = 1;
-    var b = 2;
-    fun middle() {
-        var c = 3;
-        var d = 4;
-        fun inner() {
-            print a + c + b + d;
-        }
+    var x = "outer";
+    fun inner() {
+        print x;
     }
+    inner();
 }
-
 outer();
+
+var globalSet;
+var globalGet;
+fun main() {
+    var a = "initial";
+    fun set() { a = "updated"; }
+    fun get() { print a; }
+    globalSet = set;
+    globalGet = get;
+}
+main();
+globalSet();
+globalGet();

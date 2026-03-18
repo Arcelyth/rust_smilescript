@@ -1,8 +1,8 @@
 use std::rc::Rc;
+use std::cell::RefCell;
 
-use crate::value::*;
 use crate::chunk::*;
-use crate::vm::*;
+use crate::value::*;
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -29,28 +29,40 @@ pub struct NativeFunction(pub fn(&[Value]) -> Value);
 #[derive(Debug, Clone)]
 pub struct Closure {
     pub function: Rc<Function>,
+    pub upvalues: Vec<Rc<RefCell<UpValue>>>,
 }
 
 impl Closure {
     pub fn new(function: Rc<Function>) -> Self {
-        Self {
+        Self { 
             function,
+            upvalues: Vec::new(),
         }
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct FnUpValue {
-    pub index: u8, 
-    pub is_local: bool, 
+    pub index: u8,
+    pub is_local: bool,
 }
 
 impl FnUpValue {
     pub fn new(index: u8, is_local: bool) -> Self {
+        Self { index, is_local }
+    }
+}
+#[derive(Debug, Clone)]
+pub struct UpValue {
+    pub location: usize,
+    pub closed: Option<Value>,
+}
+
+impl UpValue {
+    pub fn new(location: usize) -> Self {
         Self {
-            index,
-            is_local
+            location,
+            closed: None
         }
     }
 }
-

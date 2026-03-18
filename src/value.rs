@@ -27,7 +27,7 @@ impl Display for Value {
                     write!(f, "<fn {}>", v.name)
                 }
             }
-            Value::Native(n) => {
+            Value::Native(_n) => {
                 write!(f, "<native fn>")
             }
             Value::Closure(c) => {

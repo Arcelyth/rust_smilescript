@@ -49,10 +49,11 @@ impl<'c> Compiler<'c> {
     pub fn resolve_upvalue(&mut self, name: Token) -> Result<Option<u8>, String> {
         if let Some(enclosing) = self.enclosing.as_mut() {
             if let Some(index) = enclosing.resolve_local(name)? {
+                enclosing.locals[index as usize].is_captured = true;
                 return Ok(Some(self.add_upvalue(index, true)?));
             }
             if let Some(index) = enclosing.resolve_upvalue(name)? {
-                return Ok(Some(self.add_upvalue(index, true)?));
+                return Ok(Some(self.add_upvalue(index, false)?));
             }
         }
         Ok(None)
@@ -73,18 +74,23 @@ impl<'c> Compiler<'c> {
         }
 
         self.function.upvalues.push(FnUpValue::new(idx, is_local));
-        Ok(self.function.upvalues.len() as u8)
+        Ok(self.function.upvalues.len() as u8 - 1)
     }
 }
 
 pub struct Local<'src> {
     pub name: Token<'src>,
     pub depth: i32,
+    pub is_captured: bool,
 }
 
 impl<'src> Local<'src> {
     pub fn new(name: Token<'src>, depth: i32) -> Self {
-        Self { name, depth }
+        Self {
+            name,
+            depth,
+            is_captured: false,
+        }
     }
 }
 

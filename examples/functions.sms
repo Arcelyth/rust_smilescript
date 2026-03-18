@@ -1,8 +1,5 @@
-fun fib(n) {
-    if (n < 2) return n;
-    return fib(n - 2) + fib(n - 1);
+fun f(a, b) {
+    return a + b;
 }
 
-var start = clock();
-print fib(35);
-print clock() - start;
+print f(1, 2);

@@ -31,6 +31,7 @@ pub enum OpCode {
     Loop(u16),
     Call(u8),
     Closure(u8),
+    CloseUpValue,
 }
 
 #[derive(Debug, Clone)]

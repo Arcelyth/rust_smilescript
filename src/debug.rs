@@ -67,6 +67,7 @@ impl<'c> Disassembler<'c> {
                     _ => (),
                 }
             }
+            OpCode::CloseUpValue => println!("OP_CLOSE_UPVALUE"),
 
             _ => println!("Unknown opcode: {:?}", code),
         }
