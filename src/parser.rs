@@ -4,6 +4,7 @@ use std::rc::Rc;
 use crate::chunk::*;
 use crate::compiler::*;
 use crate::debug::Disassembler;
+use crate::gc::*;
 use crate::object::*;
 use crate::scanner::*;
 use crate::value::*;
@@ -64,17 +65,19 @@ pub struct Parser<'c> {
     compiler: Compiler<'c>,
     previous: Token<'c>,
     current: Token<'c>,
+    gc: &'c mut Gc,
     had_error: bool,
     panic_mode: bool,
 }
 
 impl<'c> Parser<'c> {
-    pub fn new(src: &'c str, compiler: Compiler<'c>) -> Self {
+    pub fn new(src: &'c str, compiler: Compiler<'c>, gc: &'c mut Gc) -> Self {
         Self {
             scanner: Scanner::new(src),
             compiler,
             previous: Token::new(TokenType::Error, "", 0),
             current: Token::new(TokenType::Error, "", 0),
+            gc,
             had_error: false,
             panic_mode: false,
         }
@@ -152,7 +155,7 @@ impl<'c> Parser<'c> {
     }
 
     pub fn current_chunk(&mut self) -> &mut Chunk {
-        self.compiler.current_chunk()
+        self.compiler.current_chunk_mut(self.gc)
     }
 
     fn end_compiler(&mut self) -> Option<Function> {
@@ -162,13 +165,19 @@ impl<'c> Parser<'c> {
         #[cfg(feature = "debug_print_code")]
         {
             if !self.had_error {
-                let name = if self.compiler.function.name != "".into() {
-                    &self.compiler.function.name.clone()
-                } else {
-                    "<script>"
-                };
-                let disassembler = Disassembler::new(self.current_chunk());
-                disassembler.dasm_chunk(name);
+                let name_gc = self.compiler.current_function(self.gc).name;
+                if let Obj::String(s) = self.gc.deref(name_gc) {
+                    let name = if s != "" {
+                        &s.clone()
+                    } else {
+                        "<script>"
+                    };
+
+                    let gc = &self.gc;
+                    let chunk = self.compiler.current_chunk(gc);
+                    let disassembler = Disassembler::new();
+                    disassembler.dasm_chunk(name, chunk, gc);
+                }
             }
         }
         if self.had_error { None } else { Some(f) }
@@ -312,7 +321,7 @@ impl<'c> Parser<'c> {
     }
 
     fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
-        match self.compiler.resolve_upvalue(name) {
+        match self.compiler.resolve_upvalue(name, self.gc) {
             Ok(r) => r,
             Err(s) => {
                 self.error(&s);
@@ -323,7 +332,10 @@ impl<'c> Parser<'c> {
 
     fn string(&mut self, _can_assign: bool) {
         let lexeme = self.previous.lexeme;
-        self.emit_constant(Value::String(lexeme[1..lexeme.len() - 1].into()));
+        let gc_ref = self
+            .gc
+            .alloc(Obj::String(lexeme[1..lexeme.len() - 1].into()));
+        self.emit_constant(Value::Obj(gc_ref));
     }
 
     fn literal(&mut self, _can_assign: bool) {
@@ -590,7 +602,8 @@ impl<'c> Parser<'c> {
     }
 
     fn identifier_constant(&mut self, name: Token) -> u8 {
-        self.make_constant(Value::String(name.lexeme.into()))
+        let gc_ref = self.gc.alloc(Obj::String(name.lexeme.into()));
+        self.make_constant(Value::Obj(gc_ref))
     }
 
     fn define_variable(&mut self, idx: u8) {
@@ -615,8 +628,8 @@ impl<'c> Parser<'c> {
         self.consume(TokenType::LeftParen, "Expect '(' after function name.");
         if !self.check(TokenType::RightParen) {
             loop {
-                self.compiler.function.arity += 1;
-                if self.compiler.function.arity > 255 {
+                self.compiler.current_function(self.gc).arity += 1;
+                if self.compiler.current_function(self.gc).arity > 255 {
                     self.error_at_current("Can't have more then 255 parameters.");
                 }
                 let c = self.parse_variable("Expect parameter name.");
@@ -630,7 +643,8 @@ impl<'c> Parser<'c> {
         self.consume(TokenType::LeftBrace, "Expect '{' after function body.");
         self.block();
         let f = self.pop_compiler();
-        let v = self.make_constant(Value::Function(Rc::from(f.clone())));
+        let gc_ref = self.gc.alloc(Obj::Function(f));
+        let v = self.make_constant(Value::Obj(gc_ref));
         self.emit_code(OpCode::Closure(v));
     }
 
@@ -693,7 +707,7 @@ impl<'c> Parser<'c> {
 
     pub fn push_compiler(&mut self, fn_ty: FunctionType) {
         let name = self.previous.lexeme;
-        let newc = Compiler::new(name, fn_ty);
+        let newc = Compiler::new(name, fn_ty, self.gc);
         let oldc = mem::replace(&mut self.compiler, newc);
         self.compiler.enclosing = Some(Box::new(oldc));
     }
@@ -701,10 +715,14 @@ impl<'c> Parser<'c> {
     pub fn pop_compiler(&mut self) -> Function {
         self.emit_return();
         if let Some(enclosing_box) = self.compiler.enclosing.take() {
-            let current_compiler = mem::replace(&mut self.compiler, *enclosing_box);
-            current_compiler.function
+            let mut current_compiler = mem::replace(&mut self.compiler, *enclosing_box);
+            current_compiler.current_function(self.gc).to_owned()
         } else {
-            mem::replace(&mut self.compiler.function, Function::new("<script>"))
+            let gc_ref = self.gc.alloc(Obj::String("<script>".to_string()));
+            mem::replace(
+                &mut self.compiler.current_function(self.gc),
+                Function::new(gc_ref),
+            )
         }
     }
 

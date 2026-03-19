@@ -1,22 +1,44 @@
-use std::rc::Rc;
-use std::cell::RefCell;
+use crate::chunk::Chunk;
+use crate::value::Value;
+use crate::gc::GcRef;
 
-use crate::chunk::*;
-use crate::value::*;
+#[derive(Debug, Clone)]
+pub enum Obj {
+    String(String),
+    Function(Function),
+    Closure(Closure),
+    UpValue(UpValue), 
+    Native(NativeFunction),
+}
+
+#[derive(Debug, Clone)]
+pub struct GcObject {
+    pub is_marked: bool,
+    pub obj: Obj,
+}
+
+impl GcObject {
+    pub fn new(obj: Obj) -> Self {
+        Self {
+            is_marked: false,
+            obj,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Function {
     pub arity: usize,
     pub chunk: Chunk,
-    pub name: Rc<str>,
+    pub name: GcRef,
     pub upvalues: Vec<FnUpValue>,
 }
 
 impl Function {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: GcRef) -> Self {
         Self {
             arity: 0,
-            name: name.into(),
+            name,
             chunk: Chunk::new(),
             upvalues: Vec::new(),
         }
@@ -28,12 +50,12 @@ pub struct NativeFunction(pub fn(&[Value]) -> Value);
 
 #[derive(Debug, Clone)]
 pub struct Closure {
-    pub function: Rc<Function>,
-    pub upvalues: Vec<Rc<RefCell<UpValue>>>,
+    pub function: GcRef, 
+    pub upvalues: Vec<GcRef>, 
 }
 
 impl Closure {
-    pub fn new(function: Rc<Function>) -> Self {
+    pub fn new(function: GcRef) -> Self {
         Self { 
             function,
             upvalues: Vec::new(),
@@ -52,6 +74,7 @@ impl FnUpValue {
         Self { index, is_local }
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct UpValue {
     pub location: usize,

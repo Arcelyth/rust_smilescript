@@ -1,45 +1,45 @@
 use crate::chunk::*;
+use crate::gc::*;
+use crate::object::*;
 use crate::value::*;
 
-pub struct Disassembler<'c> {
-    pub chunk: &'c Chunk,
-}
+pub struct Disassembler;
 
-impl<'c> Disassembler<'c> {
-    pub fn new(chunk: &'c Chunk) -> Self {
-        Self { chunk }
+impl Disassembler {
+    pub fn new() -> Self {
+        Self
     }
 
-    pub fn dasm_chunk(&self, name: &str) {
+    pub fn dasm_chunk(&self, name: &str, chunk: &Chunk, gc: &Gc) {
         println!("== {} ==", name);
-        for (offset, code) in self.chunk.code.iter().enumerate() {
-            self.dasm_instruction(offset, code)
+        for (offset, code) in chunk.code.iter().enumerate() {
+            self.dasm_instruction(chunk, offset, code, gc)
         }
     }
 
-    pub fn dasm_instruction(&self, offset: usize, code: &OpCode) {
-        print!("{:04}   ", offset);
+    pub fn dasm_instruction(&self, chunk: &Chunk, offset: usize, code: &OpCode, gc: &Gc) {
+        print!("{:04}    ", offset);
 
-        if offset > 0 && self.chunk.lines[offset] == self.chunk.lines[offset - 1] {
+        if offset > 0 && chunk.lines[offset] == chunk.lines[offset - 1] {
             print!("   | ");
         } else {
-            print!("{:4} ", self.chunk.lines[offset]);
+            print!("{:4} ", chunk.lines[offset]);
         }
 
         match code {
-            OpCode::Constant(c) => self.const_instruction("OP_CONSTANT", *c),
+            OpCode::Constant(c) => self.const_instruction(chunk, "OP_CONSTANT", *c),
             OpCode::Nil => println!("OP_NIL"),
             OpCode::True => println!("OP_TRUE"),
             OpCode::False => println!("OP_FALSE"),
             OpCode::Pop => println!("OP_POP"),
             OpCode::SetLocal(c) => self.byte_instruction("OP_SET_LOCAL", *c),
             OpCode::GetLocal(c) => self.byte_instruction("OP_GET_LOCAL", *c),
-            OpCode::SetGlobal(c) => self.const_instruction("OP_SET_GLOBAL", *c),
-            OpCode::GetGlobal(c) => self.const_instruction("OP_GET_GLOBAL", *c),
+            OpCode::SetGlobal(c) => self.const_instruction(chunk, "OP_SET_GLOBAL", *c),
+            OpCode::GetGlobal(c) => self.const_instruction(chunk, "OP_GET_GLOBAL", *c),
             OpCode::SetUpValue(c) => self.byte_instruction("OP_SET_UPVALUE", *c),
             OpCode::GetUpValue(c) => self.byte_instruction("OP_GET_UPVALUE", *c),
 
-            OpCode::DefineGlobal(c) => self.const_instruction("OP_DEFINE_GLOBAL", *c),
+            OpCode::DefineGlobal(c) => self.const_instruction(chunk, "OP_DEFINE_GLOBAL", *c),
             OpCode::Equal => println!("OP_EQUAL"),
             OpCode::Greater => println!("OP_GREATER"),
             OpCode::Less => println!("OP_LESS"),
@@ -55,13 +55,15 @@ impl<'c> Disassembler<'c> {
             OpCode::Loop(o) => self.jump_instruction("OP_LOOP", -1, *o, offset),
             OpCode::Call(arg_count) => self.byte_instruction("OP_CALL", *arg_count),
             OpCode::Closure(c) => {
-                self.const_instruction("OP_CLOSURE", *c);
-                match self.chunk.constants[*c as usize].clone() {
-                    Value::Function(f) => {
-                        for (_, upvalue) in f.upvalues.iter().enumerate() {
-                            let is_local = if upvalue.is_local { "local" } else { "upvalue" };
-                            let idx = upvalue.index;
-                            println!("{:04}    |              {} {}", offset, is_local, idx);
+                self.const_instruction(chunk, "OP_CLOSURE", *c);
+                match &chunk.constants[*c as usize] {
+                    Value::Obj(gc_ref) => {
+                        if let Obj::Function(f) = gc.deref(*gc_ref) {
+                            for upvalue in f.upvalues.iter() {
+                                let is_local = if upvalue.is_local { "local" } else { "upvalue" };
+                                let idx = upvalue.index;
+                                println!("{:04}    |               {} {}", offset, is_local, idx);
+                            }
                         }
                     }
                     _ => (),
@@ -73,10 +75,10 @@ impl<'c> Disassembler<'c> {
         }
     }
 
-    pub fn const_instruction(&self, name: &str, offset: u8) {
+    pub fn const_instruction(&self, chunk: &Chunk, name: &str, offset: u8) {
         println!(
             "{:<16} {:4} {}",
-            name, offset, self.chunk.constants[offset as usize]
+            name, offset, chunk.constants[offset as usize]
         );
     }
 

@@ -1,11 +1,11 @@
 use crate::chunk::*;
+use crate::gc::*;
 use crate::object::*;
-use crate::parser::*;
 use crate::scanner::*;
 
 pub struct Compiler<'c> {
     pub enclosing: Option<Box<Compiler<'c>>>,
-    pub function: Function,
+    pub function: GcRef,
     pub fn_ty: FunctionType,
     pub locals: Vec<Local<'c>>,
     pub scope_depth: i32,
@@ -13,10 +13,13 @@ pub struct Compiler<'c> {
 
 impl<'c> Compiler<'c> {
     pub const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
-    pub fn new(func_name: &str, fn_ty: FunctionType) -> Self {
+    pub fn new(func_name: &str, fn_ty: FunctionType, gc: &mut Gc) -> Self {
+        let f_name_ref = gc.alloc(Obj::String(func_name.to_string()));
+        let new_f = Function::new(f_name_ref);
+        let f_ref = gc.alloc(Obj::Function(new_f));
         let mut n = Self {
             enclosing: None,
-            function: Function::new(func_name),
+            function: f_ref,
             fn_ty,
             locals: Vec::with_capacity(Self::LOCAL_COUNT),
             scope_depth: 0,
@@ -29,9 +32,28 @@ impl<'c> Compiler<'c> {
         n
     }
 
-    pub fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.function.chunk
+    pub fn current_function<'gc>(&mut self, gc: &'gc mut Gc) -> &'gc mut Function {
+        match gc.deref_mut(self.function) {
+            Obj::Function(f) => f,
+            _ => unreachable!(),
+        }
     }
+
+
+    pub fn current_chunk_mut<'gc>(&mut self, gc: &'gc mut Gc) -> &'gc mut Chunk {
+        match gc.deref_mut(self.function) {
+            Obj::Function(f) => &mut f.chunk,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn current_chunk<'gc>(&mut self, gc: &'gc Gc) -> &'gc Chunk {
+        match gc.deref(self.function) {
+            Obj::Function(f) => &f.chunk,
+            _ => unreachable!(),
+        }
+    }
+
 
     pub fn resolve_local(&mut self, name: Token) -> Result<Option<u8>, String> {
         for i in (0..self.locals.len()).rev() {
@@ -46,35 +68,36 @@ impl<'c> Compiler<'c> {
         Ok(None)
     }
 
-    pub fn resolve_upvalue(&mut self, name: Token) -> Result<Option<u8>, String> {
+    pub fn resolve_upvalue(&mut self, name: Token, gc: &mut Gc) -> Result<Option<u8>, String> {
         if let Some(enclosing) = self.enclosing.as_mut() {
             if let Some(index) = enclosing.resolve_local(name)? {
                 enclosing.locals[index as usize].is_captured = true;
-                return Ok(Some(self.add_upvalue(index, true)?));
+                return Ok(Some(self.add_upvalue(index, true, gc)?));
             }
-            if let Some(index) = enclosing.resolve_upvalue(name)? {
-                return Ok(Some(self.add_upvalue(index, false)?));
+            if let Some(index) = enclosing.resolve_upvalue(name, gc)? {
+                return Ok(Some(self.add_upvalue(index, false, gc)?));
             }
         }
         Ok(None)
     }
 
-    fn add_upvalue(&mut self, idx: u8, is_local: bool) -> Result<u8, &str> {
-        for (i, upv) in self.function.upvalues.iter().enumerate() {
+    fn add_upvalue(&mut self, idx: u8, is_local: bool, gc: &mut Gc) -> Result<u8, &str> {
+        let cur_function = self.current_function(gc);
+        for (i, upv) in cur_function.upvalues.iter().enumerate() {
             if upv.index == idx && upv.is_local == is_local {
                 return Ok(i as u8);
             }
         }
 
-        match u8::try_from(self.function.upvalues.len()) {
+        match u8::try_from(cur_function.upvalues.len()) {
             Ok(_index) => (),
             Err(_) => {
-                return Err("Too many constants in one chunk.");
+                return Err("Too many upvalues in one chunk.");
             }
         }
 
-        self.function.upvalues.push(FnUpValue::new(idx, is_local));
-        Ok(self.function.upvalues.len() as u8 - 1)
+        cur_function.upvalues.push(FnUpValue::new(idx, is_local));
+        Ok(cur_function.upvalues.len() as u8 - 1)
     }
 }
 

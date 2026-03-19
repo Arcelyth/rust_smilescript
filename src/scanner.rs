@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 pub struct Scanner<'src> {
     pub src: &'src str,
     pub start: usize,

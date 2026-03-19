@@ -1,16 +1,15 @@
-use crate::object::*;
 use std::fmt::{self, Display};
-use std::rc::Rc;
+
+use crate::gc::*;
+use crate::object::*;
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Nil,
     Bool(bool),
     Number(f64),
-    String(Rc<str>),
-    Function(Rc<Function>),
-    Closure(Rc<Closure>),
-    Native(Rc<NativeFunction>),
+    Native(NativeFunction),
+    Obj(GcRef), 
 }
 
 impl Display for Value {
@@ -19,35 +18,18 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Number(v) => write!(f, "{}", v),
-            Value::String(s) => write!(f, "{}", s),
-            Value::Function(v) => {
-                if v.name == "".into() {
-                    write!(f, "<script>")
-                } else {
-                    write!(f, "<fn {}>", v.name)
-                }
-            }
-            Value::Native(_n) => {
-                write!(f, "<native fn>")
-            }
-            Value::Closure(c) => {
-                let v = c.function.clone();
-                if v.name == "".into() {
-                    write!(f, "<script>")
-                } else {
-                    write!(f, "<fn {}>", v.name)
-                }
-            }
+            Value::Obj(ref_idx) => write!(f, "<Obj ref:{}>", ref_idx.0),
+            Value::Native(_n) => write!(f, "<native>"),
         }
     }
 }
 
-pub fn values_equal(a: Value, b: Value) -> bool {
+pub fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
         (Value::Nil, Value::Nil) => true,
         (Value::Number(n1), Value::Number(n2)) => n1 == n2,
-        (Value::String(s1), Value::String(s2)) => s1 == s2,
+        (Value::Obj(ref1), Value::Obj(ref2)) => ref1 == ref2, 
         _ => false,
     }
 }

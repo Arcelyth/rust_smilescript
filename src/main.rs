@@ -4,31 +4,19 @@ use std::process;
 use std::fs;
 
 mod chunk;
-use chunk::*;
-
 mod debug;
-use debug::*;
-
 mod value;
-use value::*;
+mod compiler;
+mod scanner;
+mod parser;
+mod object;
+mod gc;
 
 mod vm;
 use vm::*;
 
 mod error;
 use error::*;
-
-mod compiler;
-use compiler::*;
-
-mod scanner;
-use scanner::*;
-
-mod parser;
-use parser::*;
-
-mod object;
-use object::*;
 
 fn main() {
     let mut vm = Vm::new();
