@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::chunk::Chunk;
-use crate::value::Value;
 use crate::gc::GcRef;
+use crate::value::Value;
 
 pub type Table = HashMap<String, Value>;
 
@@ -11,9 +11,10 @@ pub enum Obj {
     String(String),
     Function(Function),
     Closure(Closure),
-    UpValue(UpValue), 
+    UpValue(UpValue),
     Class(Class),
     Instance(Instance),
+    BoundMethod(BoundMethod),
 }
 
 #[derive(Debug, Clone)]
@@ -55,13 +56,13 @@ pub struct NativeFunction(pub fn(&[Value]) -> Value);
 
 #[derive(Debug, Clone)]
 pub struct Closure {
-    pub function: GcRef, 
-    pub upvalues: Vec<GcRef>, 
+    pub function: GcRef,
+    pub upvalues: Vec<GcRef>,
 }
 
 impl Closure {
     pub fn new(function: GcRef) -> Self {
-        Self { 
+        Self {
             function,
             upvalues: Vec::new(),
         }
@@ -90,20 +91,22 @@ impl UpValue {
     pub fn new(location: usize) -> Self {
         Self {
             location,
-            closed: None
+            closed: None,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Class {
-    name: GcRef,
+    pub name: GcRef,
+    pub methods: Table,
 }
 
 impl Class {
     fn new(name: GcRef) -> Self {
         Self {
-            name, 
+            name,
+            methods: HashMap::new(),
         }
     }
 }
@@ -119,6 +122,20 @@ impl Instance {
         Self {
             class,
             fields: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BoundMethod {
+    pub receiver: Value,
+    pub method: GcRef,
+}
+
+impl BoundMethod {
+    pub fn new(receiver: Value, method: GcRef) -> Self {
+        Self {
+            receiver, method
         }
     }
 }

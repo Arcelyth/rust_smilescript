@@ -35,6 +35,7 @@ pub enum OpCode {
     Class(u8),
     GetProperty(u8),
     SetProperty(u8),
+    Method(u8),
 }
 
 #[derive(Debug, Clone)]

@@ -338,22 +338,31 @@ impl Vm {
                     let p_name = self.read_string(idx);
 
                     if let Value::Obj(instance_ref) = self.peek(0) {
-                        let result = if let Obj::Instance(instance) = self.gc.deref(instance_ref) {
-                            instance.fields.get(&p_name).cloned() 
-                        } else {
-                            return self.runtime_error("Only instances have properties.");
-                        };
+                        let (result, instance) =
+                            if let Obj::Instance(instance) = self.gc.deref(instance_ref) {
+                                (instance.fields.get(&p_name).cloned(), instance)
+                            } else {
+                                return self.runtime_error("Only instances have properties.");
+                            };
                         match result {
                             Some(val) => {
                                 self.pop();
                                 self.push(val);
                             }
                             None => {
-                                return self
-                                    .runtime_error(&format!("Undefined property '{}'.", p_name));
+                                if !self.bind_method(instance.class, p_name) {
+                                    return Err(SmsError::RuntimeError);
+                                }
                             }
                         }
+                    } else {
+                        return self.runtime_error(&format!("Undefined property '{}'.", p_name));
                     }
+                }
+                OpCode::Method(c) => {
+                    let method_name = self.read_string(c);
+                    //                    let name_ref = self.gc.alloc(Obj::String(method_name));
+                    self.define_method(method_name);
                 }
                 _ => return Ok(()),
             }
@@ -399,6 +408,49 @@ impl Vm {
             }
         }
         panic!("Constant is not String!")
+    }
+
+    // todo: change String to GcRef
+    fn define_method(&mut self, name: String) {
+        let method = self.peek(0);
+        if let Value::Obj(class_obj) = self.peek(1) {
+            if let Obj::Class(class) = self.gc.deref_mut(class_obj) {
+                class.methods.insert(name, method);
+                self.pop();
+            }
+        } else {
+            panic!("Invalid state: trying to define a method of non class");
+        }
+    }
+
+    fn bind_method(&mut self, class_handle: GcRef, name: String) -> bool {
+        let method_ref = {
+            let class_obj = self.gc.deref(class_handle);
+
+            if let Obj::Class(class) = class_obj {
+                class.methods.get(&name).cloned()
+            } else {
+                panic!("Internal Error: Expected a class reference.");
+            }
+        };
+        match method_ref {
+            Some(Value::Obj(cl_ref)) => {
+                if !matches!(self.gc.deref(cl_ref), Obj::Closure(_)) {
+                    panic!("Internal Error: Method constant must be a closure.");
+                }
+
+                let receiver = self.peek(0);
+                let bound = BoundMethod::new(receiver, cl_ref);
+                self.pop();
+                let m_ref = self.gc.alloc(Obj::BoundMethod(bound));
+                self.push(Value::Obj(m_ref));
+                true
+            }
+            _ => {
+                let _ = self.runtime_error(&format!("Undefined property '{}'.", name));
+                false
+            }
+        }
     }
 
     fn is_string(&self, r: GcRef) -> bool {
@@ -460,6 +512,9 @@ impl Vm {
                         let stack_len = self.stack.len();
                         let ins_ref = self.gc.alloc(Obj::Instance(instance));
                         self.stack[stack_len - 1 - arg_count] = Value::Obj(ins_ref);
+                    }
+                    Obj::BoundMethod(bm) => {
+                        self.call(bm.method, arg_count);
                     }
                     _ => {
                         let _ = self.runtime_error("Can only call functions and classes");

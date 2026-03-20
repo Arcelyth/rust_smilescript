@@ -73,7 +73,7 @@ impl Disassembler {
             OpCode::Class(c) => self.const_instruction(chunk, "OP_CLASS", *c),
             OpCode::GetProperty(c) => self.const_instruction(chunk, "OP_GET_PROPERTY", *c),
             OpCode::SetProperty(c) => self.const_instruction(chunk, "OP_SET_PROPERTY", *c),
-
+            OpCode::Method(c) => self.const_instruction(chunk, "OP_METHOD", *c),
             _ => println!("Unknown opcode: {:?}", code),
         }
     }

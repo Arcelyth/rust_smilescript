@@ -608,12 +608,18 @@ impl<'c> Parser<'c> {
 
     fn class_declaration(&mut self) {
         self.consume(TokenType::Identifier, "Expect class name.");
+        let class_name = self.previous;
         let name_constant = self.identifier_constant(self.previous);
         self.declare_variable();
         self.emit_code(OpCode::Class(name_constant));
         self.define_variable(name_constant);
+        self.named_variable(class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.method();
+        }
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
+        self.emit_code(OpCode::Pop);
     }
 
     fn parse_variable(&mut self, msg: &str) -> u8 {
@@ -623,6 +629,13 @@ impl<'c> Parser<'c> {
             return 0;
         }
         self.identifier_constant(self.previous)
+    }
+
+    fn method(&mut self) {
+        self.consume(TokenType::Identifier, "Expect method name.");
+        let constant = self.identifier_constant(self.previous);
+        self.function(FunctionType::Function);
+        self.emit_code(OpCode::Method(constant));
     }
 
     fn identifier_constant(&mut self, name: Token) -> u8 {

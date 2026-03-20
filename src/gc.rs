@@ -21,7 +21,7 @@ impl Gc {
             free_slots: Vec::new(),
             gray_stack: Vec::new(),
             bytes_allocated: 0,
-            next_gc: 1024, 
+            next_gc: 1024,
         }
     }
 
@@ -125,6 +125,22 @@ impl Gc {
                     if let Some(closed) = &u.closed {
                         values_to_mark.push(closed.clone());
                     }
+                }
+                Obj::Instance(instance) => {
+                    refs_to_mark.push(instance.class);
+                    for (_name, value) in &instance.fields {
+                        values_to_mark.push(value.clone());
+                    }
+                }
+                Obj::Class(class) => {
+                    refs_to_mark.push(class.name);
+                    for (_name, value) in &class.methods{
+                        values_to_mark.push(value.clone());
+                    }
+                }
+                Obj::BoundMethod(method) => {
+                    values_to_mark.push(method.receiver.clone());
+                    refs_to_mark.push(method.method);
                 }
                 _ => {}
             }
