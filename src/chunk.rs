@@ -32,6 +32,9 @@ pub enum OpCode {
     Call(u8),
     Closure(u8),
     CloseUpValue,
+    Class(u8),
+    GetProperty(u8),
+    SetProperty(u8),
 }
 
 #[derive(Debug, Clone)]

@@ -1,6 +1,10 @@
+use std::collections::HashMap;
+
 use crate::chunk::Chunk;
 use crate::value::Value;
 use crate::gc::GcRef;
+
+pub type Table = HashMap<String, Value>;
 
 #[derive(Debug, Clone)]
 pub enum Obj {
@@ -8,7 +12,8 @@ pub enum Obj {
     Function(Function),
     Closure(Closure),
     UpValue(UpValue), 
-    Native(NativeFunction),
+    Class(Class),
+    Instance(Instance),
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +91,34 @@ impl UpValue {
         Self {
             location,
             closed: None
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Class {
+    name: GcRef,
+}
+
+impl Class {
+    fn new(name: GcRef) -> Self {
+        Self {
+            name, 
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Instance {
+    pub class: GcRef,
+    pub fields: Table,
+}
+
+impl Instance {
+    pub fn new(class: GcRef) -> Self {
+        Self {
+            class,
+            fields: HashMap::new(),
         }
     }
 }

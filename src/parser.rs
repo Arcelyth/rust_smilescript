@@ -282,6 +282,17 @@ impl<'c> Parser<'c> {
         self.emit_code(OpCode::Call(arg_count));
     }
 
+    fn dot(&mut self, can_assign: bool) {
+        self.consume(TokenType::Identifier, "Expect property name after '.'.");
+        let name = self.identifier_constant(self.previous);
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.expression();
+            self.emit_code(OpCode::SetProperty(name));
+        } else {
+            self.emit_code(OpCode::GetProperty(name));
+        }
+    }
+
     fn variable(&mut self, can_assign: bool) {
         self.named_variable(self.previous, can_assign);
     }
@@ -563,9 +574,12 @@ impl<'c> Parser<'c> {
             self.var_declaration();
         } else if self.match_token(TokenType::Fun) {
             self.fun_declaration();
+        } else if self.match_token(TokenType::Class) {
+            self.class_declaration();
         } else {
             self.statement();
         }
+
         if self.panic_mode {
             self.synchronize();
         }
@@ -590,6 +604,16 @@ impl<'c> Parser<'c> {
             "Expect ';' after variable declaration.",
         );
         self.define_variable(global);
+    }
+
+    fn class_declaration(&mut self) {
+        self.consume(TokenType::Identifier, "Expect class name.");
+        let name_constant = self.identifier_constant(self.previous);
+        self.declare_variable();
+        self.emit_code(OpCode::Class(name_constant));
+        self.define_variable(name_constant);
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.");
     }
 
     fn parse_variable(&mut self, msg: &str) -> u8 {
@@ -758,7 +782,7 @@ impl<'c> Parser<'c> {
             TokenType::LeftBrace => ParseRule::new(None, None, Precedence::None),
             TokenType::RightBrace => ParseRule::new(None, None, Precedence::None),
             TokenType::Comma => ParseRule::new(None, None, Precedence::None),
-            TokenType::Dot => ParseRule::new(None, None, Precedence::None),
+            TokenType::Dot => ParseRule::new(None, Some(Parser::dot), Precedence::Call),
             TokenType::Minus => {
                 ParseRule::new(Some(Parser::unary), Some(Parser::binary), Precedence::Term)
             }

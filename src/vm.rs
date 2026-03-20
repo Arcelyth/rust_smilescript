@@ -3,9 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::chunk::*;
 use crate::compiler::*;
-use crate::debug::Disassembler;
 use crate::error::*;
 use crate::gc::*;
+use crate::object::*;
 use crate::object::*;
 use crate::parser::*;
 use crate::value::*;
@@ -44,7 +44,7 @@ impl CallFrame {
 pub struct Vm {
     pub frames: Vec<CallFrame>,
     pub stack: Vec<Value>,
-    pub globals: HashMap<String, Value>,
+    pub globals: Table,
     pub open_upvalues: Vec<GcRef>,
     pub gc: Gc,
 }
@@ -312,7 +312,49 @@ impl Vm {
                     self.close_upvalues(pos);
                     self.pop();
                 }
+                OpCode::Class(idx) => {
+                    let name = self.read_string(idx);
+                    let class_def = self.gc.alloc(Obj::String(name));
+                    self.push(Value::Obj(class_def));
+                }
+                OpCode::SetProperty(idx) => {
+                    let value = self.peek(0).clone();
+                    let p_name = self.read_string(idx);
+                    if let Value::Obj(instance_ref) = self.peek(1) {
+                        if let Obj::Instance(instance) = self.gc.deref_mut(instance_ref) {
+                            instance.fields.insert(p_name, value.clone());
+                            self.pop();
+                            self.pop();
+                            self.push(value);
+                        } else {
+                            return self.runtime_error("Only instances have fields.");
+                        }
+                    } else {
+                        return self.runtime_error("Only instances have fields.");
+                    }
+                }
 
+                OpCode::GetProperty(idx) => {
+                    let p_name = self.read_string(idx);
+
+                    if let Value::Obj(instance_ref) = self.peek(0) {
+                        let result = if let Obj::Instance(instance) = self.gc.deref(instance_ref) {
+                            instance.fields.get(&p_name).cloned() 
+                        } else {
+                            return self.runtime_error("Only instances have properties.");
+                        };
+                        match result {
+                            Some(val) => {
+                                self.pop();
+                                self.push(val);
+                            }
+                            None => {
+                                return self
+                                    .runtime_error(&format!("Undefined property '{}'.", p_name));
+                            }
+                        }
+                    }
+                }
                 _ => return Ok(()),
             }
         }
@@ -408,11 +450,21 @@ impl Vm {
 
     fn call_value(&mut self, callee: Value, arg_count: usize) -> bool {
         match callee {
-            Value::Obj(clos_ref) => {
-                if let Obj::Closure(_) = self.gc.deref(clos_ref) {
-                    return self.call(clos_ref, arg_count);
+            Value::Obj(gc_ref) => {
+                match self.gc.deref(gc_ref) {
+                    Obj::Closure(_) => {
+                        return self.call(gc_ref, arg_count);
+                    }
+                    Obj::Class(_) => {
+                        let instance = Instance::new(gc_ref);
+                        let stack_len = self.stack.len();
+                        let ins_ref = self.gc.alloc(Obj::Instance(instance));
+                        self.stack[stack_len - 1 - arg_count] = Value::Obj(ins_ref);
+                    }
+                    _ => {
+                        let _ = self.runtime_error("Can only call functions and classes");
+                    }
                 }
-                let _ = self.runtime_error("Can only call functions and classes");
                 false
             }
             Value::Native(native) => {
