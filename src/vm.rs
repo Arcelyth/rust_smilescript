@@ -546,15 +546,12 @@ impl Vm {
                         self.stack[stack_len - 1 - arg_count] = Value::Obj(ins_ref);
                         if let Some(v) = class.methods.get(&init_string) {
                             if let Value::Obj(init_ref) = v {
-                                if arg_count != 0 {
-                                    let _ = self.runtime_error(&format!(
-                                        "Expected 0 arguments but got {}.",
-                                        arg_count
-                                    ));
-                                    return false;
-                                }
                                 return self.call(*init_ref, arg_count);
-                            } else {
+                            } else if arg_count != 0 {
+                                let _ = self.runtime_error(&format!(
+                                    "Expected 0 arguments but got {}.",
+                                    arg_count
+                                ));
                                 return false;
                             }
                         }
@@ -687,7 +684,7 @@ impl Vm {
                 Obj::BoundMethod(_bm) => {
                     format!("bound_method")
                 }
-                Obj::UpValue(uv) => {
+                Obj::UpValue(_uv) => {
                     format!("upvalue")
                 }
 
