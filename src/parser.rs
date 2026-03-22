@@ -62,11 +62,15 @@ impl<'c> ParseRule<'c> {
 
 pub struct ClassCompiler {
     pub enclosing: Option<Box<ClassCompiler>>,
+    pub has_superclass: bool,
 }
 
 impl ClassCompiler {
     pub fn new(enclosing: Option<Box<Self>>) -> Box<Self> {
-        Box::new(Self { enclosing })
+        Box::new(Self {
+            enclosing,
+            has_superclass: false,
+        })
     }
 }
 
@@ -636,11 +640,26 @@ impl<'c> Parser<'c> {
         let name_constant = self.identifier_constant(self.previous);
         self.declare_variable();
         self.emit_code(OpCode::Class(name_constant));
-
+        self.define_variable(name_constant);
         let old_class_compiler = self.current_class.take();
         let new_class_compiler = ClassCompiler::new(old_class_compiler);
         self.current_class.replace(new_class_compiler);
-        self.define_variable(name_constant);
+
+        if self.match_token(TokenType::Colon) {
+            self.consume(TokenType::Identifier, "Expect superclass name.");
+            self.variable(false);
+            if class_name.lexeme == self.previous.lexeme {
+                self.error("A class can't inherit from itself.");
+            }
+            self.begin_scope();
+            self.add_local(Token::new(TokenType::Error, "super", 0));
+            self.define_variable(0);
+
+            self.named_variable(class_name, false);
+            self.emit_code(OpCode::Inherit);
+            self.current_class.as_mut().unwrap().has_superclass = true;
+        }
+
         self.named_variable(class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
         while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
@@ -648,6 +667,9 @@ impl<'c> Parser<'c> {
         }
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
         self.emit_code(OpCode::Pop);
+        if self.current_class.as_ref().unwrap().has_superclass {
+            self.end_scope();
+        }
         self.current_class = self.current_class.take().and_then(|c| c.enclosing);
     }
 
@@ -717,6 +739,27 @@ impl<'c> Parser<'c> {
         let gc_ref = self.gc.alloc(Obj::Function(f));
         let v = self.make_constant(Value::Obj(gc_ref));
         self.emit_code(OpCode::Closure(v));
+    }
+
+    fn super_(&mut self, _can_assign: bool) {
+        if let None = self.current_class {
+            self.error("Can't use 'super' outside of a class.");
+        } else if !self.current_class.as_ref().unwrap().has_superclass {
+            self.error("Can't use 'super' in a class with no superclass.");
+        }
+        self.consume(TokenType::Dot, "Expect '.' after 'super'.");
+        self.consume(TokenType::Identifier, "Expect superclass after method name.");
+        let name = self.identifier_constant(self.previous);
+        self.named_variable(Token::new(TokenType::Error, "this", 0), false);
+        if self.match_token(TokenType::LeftParen) {
+            let arg_count = self.argument_list();
+            self.named_variable(Token::new(TokenType::Error, "super", 0), false);
+            self.emit_code(OpCode::SuperInvoke((name, arg_count)));
+        } else {
+            self.named_variable(Token::new(TokenType::Error, "super", 0), false);
+            self.emit_code(OpCode::GetSuper(name));
+        }
+
     }
 
     fn declare_variable(&mut self) {
@@ -869,7 +912,7 @@ impl<'c> Parser<'c> {
             TokenType::Or => ParseRule::new(None, Some(Parser::or), Precedence::Or),
             TokenType::Print => ParseRule::new(None, None, Precedence::None),
             TokenType::Return => ParseRule::new(None, None, Precedence::None),
-            TokenType::Super => ParseRule::new(None, None, Precedence::None),
+            TokenType::Super => ParseRule::new(Some(Parser::super_), None, Precedence::None),
             TokenType::This => ParseRule::new(Some(Parser::this), None, Precedence::None),
             TokenType::True => ParseRule::new(Some(Parser::literal), None, Precedence::None),
             TokenType::Var => ParseRule::new(None, None, Precedence::None),

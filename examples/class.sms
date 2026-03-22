@@ -28,3 +28,24 @@ class CoffeeMaker {
 
 var maker = CoffeeMaker("coffee and chicory");
 maker.brew();
+
+class Doughnut {
+    cook() {
+        print "Dunk in the fryer.";
+        this.finish("sprinkles");
+    }
+    finish(ingredient) {
+        print "Finish with " + ingredient;
+    }
+}
+
+// Inherit
+class Cruller : Doughnut {
+    finish(ingredient) {
+        super.finish("icing");
+    }
+}
+
+var cruller = Cruller();
+cruller.finish("salt");
+

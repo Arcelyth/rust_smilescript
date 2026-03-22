@@ -383,7 +383,47 @@ impl Vm {
                     if !self.invoke(method, t.1) {
                         return Err(SmsError::RuntimeError);
                     }
-                   
+                }
+                OpCode::SuperInvoke(t) => {
+                    let method = self.read_string(t.0);
+                    let super_class = self.pop();
+                    if let Value::Obj(sup_ref) = super_class {
+                        if !self.invoke_from_class(sup_ref, method, t.1) {
+                            return Err(SmsError::RuntimeError);
+                        }
+                    }
+                }
+                OpCode::Inherit => {
+                    let superclass = self.peek(1);
+                    let subclass = self.peek(0);
+                    if let (Value::Obj(a), Value::Obj(b)) = (superclass, subclass) {
+                        let sup = self.gc.deref(a);
+                        let sup_class = if let Obj::Class(sup_class) = sup {
+                            sup_class
+                        } else {
+                            self.runtime_error("Superclass must be a class.")?;
+                            return Err(SmsError::RuntimeError);
+                        };
+                        let methods = sup_class.methods.clone();
+                        let sub = self.gc.deref_mut(b);
+                        let sub_class = if let Obj::Class(sub_class) = sub {
+                            sub_class
+                        } else {
+                            self.runtime_error("Subclass must be a class.")?;
+                            return Err(SmsError::RuntimeError);
+                        };
+                        sub_class.methods = methods;
+                    }
+                    self.pop();
+                }
+                OpCode::GetSuper(idx) => {
+                    let name = self.read_string(idx);
+                    let superclass = self.pop();
+                    if let Value::Obj(sup_class) = superclass {
+                        if !self.bind_method(sup_class, name) {
+                            return Err(SmsError::RuntimeError);
+                        }
+                    }
                 }
                 _ => return Ok(()),
             }
@@ -427,7 +467,7 @@ impl Vm {
         };
         if let Some(method) = klass.methods.get(&name) {
             if let Value::Obj(c_ref) = method {
-                    return self.call(*c_ref, arg_count as usize);
+                return self.call(*c_ref, arg_count as usize);
             }
         } else {
             self.runtime_error(&format!("Undefined property {}.", name));

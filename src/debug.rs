@@ -75,6 +75,9 @@ impl Disassembler {
             OpCode::SetProperty(c) => self.const_instruction(chunk, "OP_SET_PROPERTY", *c),
             OpCode::Method(c) => self.const_instruction(chunk, "OP_METHOD", *c),
             OpCode::Invoke(t) => self.invoke_instruction(chunk, "OP_INVOKE", *t),
+            OpCode::SuperInvoke(t) => self.invoke_instruction(chunk, "OP_SUPER_INVOKE", *t),
+            OpCode::Inherit => println!("OP_INHERIT"),
+            OpCode::GetSuper(c) => self.const_instruction(chunk, "OP_INHERIT", *c),
             _ => println!("Unknown opcode: {:?}", code),
         }
     }

@@ -37,6 +37,9 @@ pub enum OpCode {
     SetProperty(u8),
     Method(u8),
     Invoke((u8, u8)),
+    SuperInvoke((u8, u8)),
+    Inherit,
+    GetSuper(u8),
 }
 
 #[derive(Debug, Clone)]
