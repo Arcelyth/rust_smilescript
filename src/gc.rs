@@ -188,7 +188,7 @@ impl Vm {
         for upvalue in &self.open_upvalues {
             self.gc.mark_object(*upvalue);
         }
-
+        self.gc.mark_object(self.init_string);
         self.gc.collect_garbage();
     }
 

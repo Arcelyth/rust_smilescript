@@ -60,6 +60,16 @@ impl<'c> ParseRule<'c> {
     }
 }
 
+pub struct ClassCompiler {
+    pub enclosing: Option<Box<ClassCompiler>>,
+}
+
+impl ClassCompiler {
+    pub fn new(enclosing: Option<Box<Self>>) -> Box<Self> {
+        Box::new(Self { enclosing })
+    }
+}
+
 pub struct Parser<'c> {
     scanner: Scanner<'c>,
     compiler: Compiler<'c>,
@@ -68,6 +78,7 @@ pub struct Parser<'c> {
     gc: &'c mut Gc,
     had_error: bool,
     panic_mode: bool,
+    current_class: Option<Box<ClassCompiler>>,
 }
 
 impl<'c> Parser<'c> {
@@ -80,6 +91,7 @@ impl<'c> Parser<'c> {
             gc,
             had_error: false,
             panic_mode: false,
+            current_class: None,
         }
     }
 
@@ -167,11 +179,7 @@ impl<'c> Parser<'c> {
             if !self.had_error {
                 let name_gc = self.compiler.current_function(self.gc).name;
                 if let Obj::String(s) = self.gc.deref(name_gc) {
-                    let name = if s != "" {
-                        &s.clone()
-                    } else {
-                        "<script>"
-                    };
+                    let name = if s != "" { &s.clone() } else { "<script>" };
 
                     let gc = &self.gc;
                     let chunk = self.compiler.current_chunk(gc);
@@ -189,7 +197,10 @@ impl<'c> Parser<'c> {
     }
 
     fn emit_return(&mut self) {
-        self.emit_code(OpCode::Nil);
+        match self.compiler.fn_ty {
+            FunctionType::Initializer => self.emit_code(OpCode::GetLocal(0)),
+            _ => self.emit_code(OpCode::Nil),
+        };
         self.emit_code(OpCode::Return);
     }
 
@@ -295,6 +306,14 @@ impl<'c> Parser<'c> {
 
     fn variable(&mut self, can_assign: bool) {
         self.named_variable(self.previous, can_assign);
+    }
+
+    fn this(&mut self, _can_assign: bool) {
+        if let None = self.current_class {
+            self.error("Can't use 'this' outside of a class.");
+            return;
+        }
+        self.variable(false);
     }
 
     fn named_variable(&mut self, name: Token, can_assign: bool) {
@@ -612,6 +631,10 @@ impl<'c> Parser<'c> {
         let name_constant = self.identifier_constant(self.previous);
         self.declare_variable();
         self.emit_code(OpCode::Class(name_constant));
+
+        let old_class_compiler = self.current_class.take();
+        let new_class_compiler = ClassCompiler::new(old_class_compiler);
+        self.current_class.replace(new_class_compiler);
         self.define_variable(name_constant);
         self.named_variable(class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
@@ -620,6 +643,7 @@ impl<'c> Parser<'c> {
         }
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
         self.emit_code(OpCode::Pop);
+        self.current_class = self.current_class.take().and_then(|c| c.enclosing);
     }
 
     fn parse_variable(&mut self, msg: &str) -> u8 {
@@ -634,7 +658,12 @@ impl<'c> Parser<'c> {
     fn method(&mut self) {
         self.consume(TokenType::Identifier, "Expect method name.");
         let constant = self.identifier_constant(self.previous);
-        self.function(FunctionType::Function);
+        let ty = if self.previous.lexeme == "init" {
+            FunctionType::Initializer
+        } else {
+            FunctionType::Method
+        };
+        self.function(ty);
         self.emit_code(OpCode::Method(constant));
     }
 
@@ -836,7 +865,7 @@ impl<'c> Parser<'c> {
             TokenType::Print => ParseRule::new(None, None, Precedence::None),
             TokenType::Return => ParseRule::new(None, None, Precedence::None),
             TokenType::Super => ParseRule::new(None, None, Precedence::None),
-            TokenType::This => ParseRule::new(None, None, Precedence::None),
+            TokenType::This => ParseRule::new(Some(Parser::this), None, Precedence::None),
             TokenType::True => ParseRule::new(Some(Parser::literal), None, Precedence::None),
             TokenType::Var => ParseRule::new(None, None, Precedence::None),
             TokenType::While => ParseRule::new(None, None, Precedence::None),

@@ -103,7 +103,7 @@ pub struct Class {
 }
 
 impl Class {
-    fn new(name: GcRef) -> Self {
+    pub fn new(name: GcRef) -> Self {
         Self {
             name,
             methods: HashMap::new(),

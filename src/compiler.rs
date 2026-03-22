@@ -20,12 +20,13 @@ impl<'c> Compiler<'c> {
         let mut n = Self {
             enclosing: None,
             function: f_ref,
-            fn_ty,
+            fn_ty: fn_ty,
             locals: Vec::with_capacity(Self::LOCAL_COUNT),
             scope_depth: 0,
         };
 
         let token = match fn_ty {
+            FunctionType::Function => Token::new(TokenType::Error, "this", 0),
             _ => Token::new(TokenType::Error, "", 0),
         };
         n.locals.push(Local::new(token, 0));
@@ -38,7 +39,6 @@ impl<'c> Compiler<'c> {
             _ => unreachable!(),
         }
     }
-
 
     pub fn current_chunk_mut<'gc>(&mut self, gc: &'gc mut Gc) -> &'gc mut Chunk {
         match gc.deref_mut(self.function) {
@@ -53,7 +53,6 @@ impl<'c> Compiler<'c> {
             _ => unreachable!(),
         }
     }
-
 
     pub fn resolve_local(&mut self, name: Token) -> Result<Option<u8>, String> {
         for i in (0..self.locals.len()).rev() {
@@ -117,7 +116,10 @@ impl<'src> Local<'src> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum FunctionType {
     Function,
+    Method,
+    Initializer,
     Script,
 }

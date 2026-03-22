@@ -3,9 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::chunk::*;
 use crate::compiler::*;
+use crate::debug::*;
 use crate::error::*;
 use crate::gc::*;
-use crate::object::*;
 use crate::object::*;
 use crate::parser::*;
 use crate::value::*;
@@ -47,6 +47,7 @@ pub struct Vm {
     pub globals: Table,
     pub open_upvalues: Vec<GcRef>,
     pub gc: Gc,
+    pub init_string: GcRef,
 }
 
 impl Vm {
@@ -54,12 +55,15 @@ impl Vm {
     const FRAME_MAX: usize = 64;
 
     pub fn new() -> Self {
+        let mut gc = Gc::new();
+        let init_string = gc.alloc(Obj::String("init".to_string()));
         let mut vm = Self {
             frames: Vec::with_capacity(Self::FRAME_MAX),
             stack: Vec::with_capacity(Self::STACK_MAX),
             globals: HashMap::new(),
             open_upvalues: Vec::with_capacity(Self::STACK_MAX),
-            gc: Gc::new(),
+            gc: gc,
+            init_string,
         };
         vm.define_native("clock", NativeFunction(clock_native));
         vm
@@ -104,9 +108,18 @@ impl Vm {
             {
                 print!("         ");
                 for i in self.stack.iter() {
-                    print!("[ {:?} ]", i);
+                    print!("[ {} ]", self.print_value(i));
                 }
                 println!();
+                let frame = self.current_frame();
+                let clos_ref = frame.closure;
+                if let Obj::Closure(c) = self.gc.deref(clos_ref) {
+                    if let Obj::Function(f) = self.gc.deref(c.function) {
+                        let chunk = &f.chunk;
+                        let dis = Disassembler::new();
+                        dis.dasm_instruction(chunk, frame.ip, &chunk.code[frame.ip], &self.gc);
+                    }
+                };
             }
             match self.read_byte() {
                 OpCode::Constant(c) => {
@@ -115,7 +128,7 @@ impl Vm {
                 }
                 OpCode::Print => {
                     let val = self.pop();
-                    self.print_value(&val);
+                    println!("{}", self.print_value(&val));
                 }
                 OpCode::Return => {
                     let res = self.pop();
@@ -313,8 +326,9 @@ impl Vm {
                     self.pop();
                 }
                 OpCode::Class(idx) => {
-                    let name = self.read_string(idx);
-                    let class_def = self.gc.alloc(Obj::String(name));
+                    let name_ref = self.read_string_gcref(idx);
+                    let class = Class::new(name_ref);
+                    let class_def = self.gc.alloc(Obj::Class(class));
                     self.push(Value::Obj(class_def));
                 }
                 OpCode::SetProperty(idx) => {
@@ -410,6 +424,16 @@ impl Vm {
         panic!("Constant is not String!")
     }
 
+    pub fn read_string_gcref(&self, idx: u8) -> GcRef {
+        let val = self.read_constant(idx);
+        if let Value::Obj(s_ref) = val {
+            if let Obj::String(_s) = self.gc.deref(s_ref) {
+                return s_ref;
+            }
+        }
+        panic!("Constant is not String!")
+    }
+
     // todo: change String to GcRef
     fn define_method(&mut self, name: String) {
         let method = self.peek(0);
@@ -428,19 +452,19 @@ impl Vm {
             let class_obj = self.gc.deref(class_handle);
 
             if let Obj::Class(class) = class_obj {
-                class.methods.get(&name).cloned()
+                class.methods.get(&name)
             } else {
                 panic!("Internal Error: Expected a class reference.");
             }
         };
         match method_ref {
             Some(Value::Obj(cl_ref)) => {
-                if !matches!(self.gc.deref(cl_ref), Obj::Closure(_)) {
+                if !matches!(self.gc.deref(*cl_ref), Obj::Closure(_)) {
                     panic!("Internal Error: Method constant must be a closure.");
                 }
 
                 let receiver = self.peek(0);
-                let bound = BoundMethod::new(receiver, cl_ref);
+                let bound = BoundMethod::new(receiver, *cl_ref);
                 self.pop();
                 let m_ref = self.gc.alloc(Obj::BoundMethod(bound));
                 self.push(Value::Obj(m_ref));
@@ -503,18 +527,44 @@ impl Vm {
     fn call_value(&mut self, callee: Value, arg_count: usize) -> bool {
         match callee {
             Value::Obj(gc_ref) => {
-                match self.gc.deref(gc_ref) {
+                let obj = self.gc.deref(gc_ref).clone();
+                match obj {
                     Obj::Closure(_) => {
                         return self.call(gc_ref, arg_count);
                     }
-                    Obj::Class(_) => {
+                    Obj::Class(class) => {
+                        let init_string =
+                            if let Obj::String(str) = self.gc.deref(self.init_string).clone() {
+                                str
+                            } else {
+                                return false;
+                            };
+
                         let instance = Instance::new(gc_ref);
                         let stack_len = self.stack.len();
                         let ins_ref = self.gc.alloc(Obj::Instance(instance));
                         self.stack[stack_len - 1 - arg_count] = Value::Obj(ins_ref);
+                        if let Some(v) = class.methods.get(&init_string) {
+                            if let Value::Obj(init_ref) = v {
+                                if arg_count != 0 {
+                                    let _ = self.runtime_error(&format!(
+                                        "Expected 0 arguments but got {}.",
+                                        arg_count
+                                    ));
+                                    return false;
+                                }
+                                return self.call(*init_ref, arg_count);
+                            } else {
+                                return false;
+                            }
+                        }
+                        return true;
                     }
                     Obj::BoundMethod(bm) => {
+                        let stack_len = self.stack.len();
+                        self.stack[stack_len - 1 - arg_count] = bm.receiver;
                         self.call(bm.method, arg_count);
+                        return true;
                     }
                     _ => {
                         let _ = self.runtime_error("Can only call functions and classes");
@@ -601,26 +651,47 @@ impl Vm {
         Err(SmsError::RuntimeError)
     }
 
-    fn print_value(&self, v: &Value) {
+    fn print_value(&self, v: &Value) -> String {
         match v {
-            Value::Number(n) => println!("{}", n),
-            Value::Bool(b) => println!("{}", b),
-            Value::Nil => println!("nil"),
-            Value::Native(_) => println!("<native fn>"),
+            Value::Number(n) => format!("{}", n),
+            Value::Bool(b) => format!("{}", b),
+            Value::Nil => format!("nil"),
+            Value::Native(_) => format!("<native fn>"),
             Value::Obj(r) => match self.gc.deref(*r) {
-                Obj::String(s) => println!("{}", s),
+                Obj::String(s) => format!("{}", s),
                 Obj::Closure(c) => {
                     if let Obj::Function(f) = self.gc.deref(c.function) {
                         if let Obj::String(f_name) = self.gc.deref(f.name) {
                             if f_name.is_empty() {
-                                println!("<script>");
+                                format!("<script>")
                             } else {
-                                println!("<fn {}>", f_name);
+                                format!("<fn {}>", f_name)
                             }
+                        } else {
+                            format!("object")
                         }
+                    } else {
+                        format!("object")
                     }
                 }
-                _ => println!("object"),
+                Obj::Class(c) => {
+                    if let Obj::String(name) = self.gc.deref(c.name) {
+                        format!("<class {}>", name)
+                    } else {
+                        format!("object")
+                    }
+                }
+                Obj::Instance(_i) => {
+                    format!("<instance>")
+                }
+                Obj::BoundMethod(_bm) => {
+                    format!("bound_method")
+                }
+                Obj::UpValue(uv) => {
+                    format!("upvalue")
+                }
+
+                _ => format!("object"),
             },
         }
     }

@@ -2,6 +2,7 @@ use std::fmt::{self, Display};
 
 use crate::gc::*;
 use crate::object::*;
+use crate::vm::*;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -9,7 +10,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     Native(NativeFunction),
-    Obj(GcRef), 
+    Obj(GcRef),
 }
 
 impl Display for Value {
@@ -29,7 +30,9 @@ pub fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
         (Value::Nil, Value::Nil) => true,
         (Value::Number(n1), Value::Number(n2)) => n1 == n2,
-        (Value::Obj(ref1), Value::Obj(ref2)) => ref1 == ref2, 
+        (Value::Obj(ref1), Value::Obj(ref2)) => ref1 == ref2,
         _ => false,
     }
 }
+
+
