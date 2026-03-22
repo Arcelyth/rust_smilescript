@@ -74,6 +74,7 @@ impl Disassembler {
             OpCode::GetProperty(c) => self.const_instruction(chunk, "OP_GET_PROPERTY", *c),
             OpCode::SetProperty(c) => self.const_instruction(chunk, "OP_SET_PROPERTY", *c),
             OpCode::Method(c) => self.const_instruction(chunk, "OP_METHOD", *c),
+            OpCode::Invoke(t) => self.invoke_instruction(chunk, "OP_INVOKE", *t),
             _ => println!("Unknown opcode: {:?}", code),
         }
     }
@@ -97,4 +98,9 @@ impl Disassembler {
         };
         println!("{:<16} {:4} -> {}", name, pos, jump_to);
     }
+
+    pub fn invoke_instruction(&self, chunk: &Chunk, name: &str, info:(u8, u8)) {
+        println!("{:<16} ({} args) {:4}", name, info.1, info.0);
+    }
+
 }

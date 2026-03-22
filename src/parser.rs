@@ -299,6 +299,9 @@ impl<'c> Parser<'c> {
         if can_assign && self.match_token(TokenType::Equal) {
             self.expression();
             self.emit_code(OpCode::SetProperty(name));
+        } else if self.match_token(TokenType::LeftParen) {
+            let arg_count = self.argument_list();
+            self.emit_code(OpCode::Invoke((name, arg_count)));
         } else {
             self.emit_code(OpCode::GetProperty(name));
         }
@@ -550,6 +553,8 @@ impl<'c> Parser<'c> {
     fn return_statement(&mut self) {
         if let FunctionType::Script = self.compiler.fn_ty {
             self.error("Can't return from top-level code.");
+        } else if let FunctionType::Initializer = self.compiler.fn_ty {
+            self.error("Can't return a value from an initializer.");
         }
         if self.match_token(TokenType::Semicolon) {
             self.emit_return();

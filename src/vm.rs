@@ -378,6 +378,13 @@ impl Vm {
                     //                    let name_ref = self.gc.alloc(Obj::String(method_name));
                     self.define_method(method_name);
                 }
+                OpCode::Invoke(t) => {
+                    let method = self.read_string(t.0);
+                    if !self.invoke(method, t.1) {
+                        return Err(SmsError::RuntimeError);
+                    }
+                   
+                }
                 _ => return Ok(()),
             }
         }
@@ -394,6 +401,38 @@ impl Vm {
     fn peek(&self, n: usize) -> Value {
         let size = self.stack.len();
         self.stack[size - 1 - n].clone()
+    }
+
+    fn invoke(&mut self, name: String, arg_count: u8) -> bool {
+        if let Value::Obj(receiver_ref) = self.peek(arg_count as usize) {
+            if let Obj::Instance(instance) = self.gc.deref(receiver_ref) {
+                if let Some(value) = instance.fields.get(&name) {
+                    let pos = self.stack.len() - arg_count as usize - 1;
+                    self.stack[pos] = value.clone();
+                    return self.call_value(value.clone(), arg_count as usize);
+                }
+                return self.invoke_from_class(instance.class, name, arg_count);
+            } else {
+                self.runtime_error("Only instances have methods.");
+            }
+        }
+        false
+    }
+
+    fn invoke_from_class(&mut self, class: GcRef, name: String, arg_count: u8) -> bool {
+        let klass = if let Obj::Class(class) = self.gc.deref(class) {
+            class
+        } else {
+            return false;
+        };
+        if let Some(method) = klass.methods.get(&name) {
+            if let Value::Obj(c_ref) = method {
+                    return self.call(*c_ref, arg_count as usize);
+            }
+        } else {
+            self.runtime_error(&format!("Undefined property {}.", name));
+        }
+        false
     }
 
     fn is_falsey(&self, val: &Value) -> bool {
