@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::chunk::*;
 use crate::compiler::*;
+use crate::debug::*;
 use crate::error::*;
 use crate::gc::*;
 use crate::object::*;
@@ -98,6 +99,23 @@ impl Vm {
 
     pub fn run(&mut self) -> Result<(), SmsError> {
         loop {
+            #[cfg(feature = "debug_trace_execution")]
+            {
+                print!("         ");
+                for i in 0..self.sp {
+                    print!("[ {} ]", self.print_value(&self.stack[i]));
+                }
+                println!();
+                let frame = self.current_frame();
+                let clos_ref = frame.closure;
+                if let Obj::Closure(c) = self.gc.deref(clos_ref) {
+                    if let Obj::Function(f) = self.gc.deref(c.function) {
+                        let chunk = &f.chunk;
+                        let dis = Disassembler::new();
+                        dis.dasm_instruction(chunk, frame.ip, &chunk.code[frame.ip], &self.gc);
+                    }
+                };
+            }
             let frame = self.current_frame_mut();
             let ip = frame.ip;
             frame.ip += 1;
@@ -113,23 +131,6 @@ impl Vm {
                 panic!("Invalid frame state");
             };
 
-            #[cfg(feature = "debug_trace_execution")]
-            {
-                print!("         ");
-                for i in self.stack.iter() {
-                    print!("[ {} ]", self.print_value(i));
-                }
-                println!();
-                let frame = self.current_frame();
-                let clos_ref = frame.closure;
-                if let Obj::Closure(c) = self.gc.deref(clos_ref) {
-                    if let Obj::Function(f) = self.gc.deref(c.function) {
-                        let chunk = &f.chunk;
-                        let dis = Disassembler::new();
-                        dis.dasm_instruction(chunk, frame.ip, &chunk.code[frame.ip], &self.gc);
-                    }
-                };
-            }
             match code {
                 OpCode::Constant(c) => {
                     let v = self.read_constant(c);
@@ -713,7 +714,7 @@ impl Vm {
     fn frames_pop(&mut self) -> CallFrame {
         self.frame_count -= 1;
         self.frames[self.frame_count]
-    } 
+    }
 
     fn define_native(&mut self, name: &str, func: NativeFunction) {
         self.globals.insert(name.to_string(), Value::Native(func));
@@ -722,8 +723,7 @@ impl Vm {
     pub fn runtime_error(&mut self, msg: &str) -> Result<(), SmsError> {
         eprintln!("{}", msg);
 
-        for i in self.frame_count-1..0{
-            
+        for i in self.frame_count - 1..0 {
             let frame = self.frames[i];
             let inst = if frame.ip > 0 { frame.ip - 1 } else { 0 };
 

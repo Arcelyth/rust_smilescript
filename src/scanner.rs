@@ -151,7 +151,9 @@ impl<'src> Scanner<'src> {
     fn ident_type(&self) -> TokenType {
         match self.lexeme() {
             "and" => TokenType::And,
+            "break" => TokenType::Break,
             "class" => TokenType::Class,
+            "continue" => TokenType::Continue,
             "else" => TokenType::Else,
             "false" => TokenType::False,
             "for" => TokenType::For,
@@ -224,7 +226,9 @@ pub enum TokenType {
 
     // Keywords.
     And,
+    Break,
     Class,
+    Continue,
     Else,
     False,
     For,

@@ -1,0 +1,11 @@
+var a = 0;
+while (a < 10) {
+    if (a == 5) break;
+    a = a + 1;
+    print a;
+}
+
+for (var b = 10; b < 15; b = b + 1) {
+    if (b == 12) break;
+    print b;
+}

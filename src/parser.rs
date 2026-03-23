@@ -2,6 +2,7 @@ use std::mem;
 
 use crate::chunk::*;
 use crate::compiler::*;
+use crate::debug::*;
 use crate::gc::*;
 use crate::object::*;
 use crate::scanner::*;
@@ -269,7 +270,7 @@ impl<'c> Parser<'c> {
                 self.emit_code(OpCode::Equal);
                 self.emit_code(OpCode::Not);
             }
-            TokenType::Equal => {
+            TokenType::EqualEqual => {
                 self.emit_code(OpCode::Equal);
             }
             TokenType::Greater => {
@@ -461,6 +462,10 @@ impl<'c> Parser<'c> {
     fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
+        } else if self.match_token(TokenType::Break) {
+            self.break_statement();
+        } else if self.match_token(TokenType::Continue) {
+            self.continue_statement();
         } else if self.match_token(TokenType::If) {
             self.if_statement();
         } else if self.match_token(TokenType::While) {
@@ -484,6 +489,26 @@ impl<'c> Parser<'c> {
         self.emit_code(OpCode::Print);
     }
 
+    fn break_statement(&mut self) {
+        if self.compiler.loop_stack.is_empty() {
+            self.error("The break statement cannot be used outside of a loop.");
+        }
+        self.consume(TokenType::Semicolon, "Expect ';' after break.");
+        let exit_jump = self.emit_code(OpCode::Jump(0xffff));
+        let last_idx = self.compiler.loop_stack.len() - 1;
+        self.compiler.loop_stack[last_idx].break_jumps.push(exit_jump);
+    }
+
+    fn continue_statement(&mut self) {
+        if self.compiler.loop_stack.is_empty() {
+            self.error("The continue statement cannot be used outside of a loop.");
+        }
+        self.consume(TokenType::Semicolon, "Expect ';' after break.");
+        let last_idx = self.compiler.loop_stack.len() - 1;
+        let start_index = self.compiler.loop_stack[last_idx].start_index;
+        self.emit_loop(start_index);
+    }
+
     fn if_statement(&mut self) {
         self.consume(TokenType::LeftParen, "Expect '(' fater if.");
         self.expression();
@@ -503,6 +528,8 @@ impl<'c> Parser<'c> {
 
     fn while_statement(&mut self) {
         let loop_start = self.current_chunk().code.len();
+        let loop_state = LoopState::new(loop_start);
+        self.compiler.loop_stack.push(loop_state);
         self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
@@ -512,6 +539,10 @@ impl<'c> Parser<'c> {
         self.emit_loop(loop_start);
         self.patch_jump(exit_jump);
         self.emit_code(OpCode::Pop);
+        let loop_info = self.compiler.loop_stack.pop().unwrap();
+        for break_jump in loop_info.break_jumps {
+            self.patch_jump(break_jump);
+        }
     }
 
     fn for_statement(&mut self) {
@@ -524,6 +555,8 @@ impl<'c> Parser<'c> {
             self.expression_statement();
         }
         let mut loop_start = self.current_chunk().code.len();
+        let loop_state = LoopState::new(loop_start);
+        self.compiler.loop_stack.push(loop_state);
         let mut exit_jump: i32 = -1;
         if !self.match_token(TokenType::Semicolon) {
             self.expression();
@@ -542,6 +575,9 @@ impl<'c> Parser<'c> {
             loop_start = incr_start;
             self.patch_jump(body_jump);
         }
+        let last_idx = self.compiler.loop_stack.len() - 1;
+        self.compiler.loop_stack[last_idx].start_index = loop_start;
+
         self.statement();
         self.emit_loop(loop_start);
 
@@ -549,6 +585,11 @@ impl<'c> Parser<'c> {
             self.patch_jump(exit_jump as usize);
             self.emit_code(OpCode::Pop);
         }
+        let loop_info = self.compiler.loop_stack.pop().unwrap();
+        for break_jump in loop_info.break_jumps {
+            self.patch_jump(break_jump);
+        }
+
         self.end_scope();
     }
 
@@ -746,7 +787,10 @@ impl<'c> Parser<'c> {
             self.error("Can't use 'super' in a class with no superclass.");
         }
         self.consume(TokenType::Dot, "Expect '.' after 'super'.");
-        self.consume(TokenType::Identifier, "Expect superclass after method name.");
+        self.consume(
+            TokenType::Identifier,
+            "Expect superclass after method name.",
+        );
         let name = self.identifier_constant(self.previous);
         self.named_variable(Token::new(TokenType::Error, "this", 0), false);
         if self.match_token(TokenType::LeftParen) {
@@ -757,7 +801,6 @@ impl<'c> Parser<'c> {
             self.named_variable(Token::new(TokenType::Error, "super", 0), false);
             self.emit_code(OpCode::GetSuper(name));
         }
-
     }
 
     fn declare_variable(&mut self) {

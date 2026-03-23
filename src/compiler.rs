@@ -3,12 +3,27 @@ use crate::gc::*;
 use crate::object::*;
 use crate::scanner::*;
 
+pub struct LoopState {
+    pub start_index: usize,
+    pub break_jumps: Vec<usize>,
+}
+
+impl LoopState {
+    pub fn new(start_index: usize) -> Self {
+        Self {
+            start_index,
+            break_jumps: Vec::new(),
+        }
+    }
+}
+
 pub struct Compiler<'c> {
     pub enclosing: Option<Box<Compiler<'c>>>,
     pub function: GcRef,
     pub fn_ty: FunctionType,
     pub locals: Vec<Local<'c>>,
     pub scope_depth: i32,
+    pub loop_stack: Vec<LoopState>,
 }
 
 impl<'c> Compiler<'c> {
@@ -23,6 +38,7 @@ impl<'c> Compiler<'c> {
             fn_ty: fn_ty,
             locals: Vec::with_capacity(Self::LOCAL_COUNT),
             scope_depth: 0,
+            loop_stack: Vec::new(),
         };
 
         let token = match fn_ty {
@@ -43,6 +59,13 @@ impl<'c> Compiler<'c> {
     pub fn current_chunk_mut<'gc>(&mut self, gc: &'gc mut Gc) -> &'gc mut Chunk {
         match gc.deref_mut(self.function) {
             Obj::Function(f) => &mut f.chunk,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn current_chunk<'gc>(&mut self, gc: &'gc Gc) -> &'gc Chunk {
+        match gc.deref(self.function) {
+            Obj::Function(f) => &f.chunk,
             _ => unreachable!(),
         }
     }

@@ -1,8 +1,5 @@
-var a = 0;
+var a = 1;
 if (a == 0) {
     print "a is zero";
-} else {
-    print "a is not zero";
 }
-
 print a;
