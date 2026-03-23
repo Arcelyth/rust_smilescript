@@ -2,7 +2,6 @@ use std::fmt::{self, Display};
 
 use crate::gc::*;
 use crate::object::*;
-use crate::vm::*;
 
 #[derive(Debug, Clone)]
 pub enum Value {

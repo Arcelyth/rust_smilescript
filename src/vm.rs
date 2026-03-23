@@ -3,7 +3,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::chunk::*;
 use crate::compiler::*;
-use crate::debug::*;
 use crate::error::*;
 use crate::gc::*;
 use crate::object::*;
@@ -425,7 +424,6 @@ impl Vm {
                         }
                     }
                 }
-                _ => return Ok(()),
             }
         }
     }
@@ -453,7 +451,7 @@ impl Vm {
                 }
                 return self.invoke_from_class(instance.class, name, arg_count);
             } else {
-                self.runtime_error("Only instances have methods.");
+                let _ = self.runtime_error("Only instances have methods.");
             }
         }
         false
@@ -470,7 +468,7 @@ impl Vm {
                 return self.call(*c_ref, arg_count as usize);
             }
         } else {
-            self.runtime_error(&format!("Undefined property {}.", name));
+            let _ = self.runtime_error(&format!("Undefined property {}.", name));
         }
         false
     }

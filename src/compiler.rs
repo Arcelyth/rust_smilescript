@@ -47,13 +47,6 @@ impl<'c> Compiler<'c> {
         }
     }
 
-    pub fn current_chunk<'gc>(&mut self, gc: &'gc Gc) -> &'gc Chunk {
-        match gc.deref(self.function) {
-            Obj::Function(f) => &f.chunk,
-            _ => unreachable!(),
-        }
-    }
-
     pub fn resolve_local(&mut self, name: Token) -> Result<Option<u8>, String> {
         for i in (0..self.locals.len()).rev() {
             let local = &self.locals[i];

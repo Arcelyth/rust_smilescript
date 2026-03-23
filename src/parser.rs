@@ -1,9 +1,7 @@
 use std::mem;
-use std::rc::Rc;
 
 use crate::chunk::*;
 use crate::compiler::*;
-use crate::debug::Disassembler;
 use crate::gc::*;
 use crate::object::*;
 use crate::scanner::*;

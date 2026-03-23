@@ -54,7 +54,7 @@ impl Gc {
             println!("== GC begin ==");
         }
 
-        let before = self.bytes_allocated;
+        let _before = self.bytes_allocated;
         self.trace_references();
         self.sweep();
         self.next_gc *= Self::GC_HEAP_GROW_FACTOR;
@@ -62,7 +62,7 @@ impl Gc {
         #[cfg(feature = "debug_log_gc")]
         println!(
             "== GC end == Collected {} objects",
-            before - self.bytes_allocated
+            _before - self.bytes_allocated
         );
     }
 
