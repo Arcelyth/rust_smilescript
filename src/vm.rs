@@ -24,6 +24,7 @@ macro_rules! binary_op {
     };
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct CallFrame {
     pub closure: GcRef,
     ip: usize,
@@ -41,8 +42,9 @@ impl CallFrame {
 }
 
 pub struct Vm {
-    pub frames: Vec<CallFrame>,
-    pub stack: [Value; Self::STACK_MAX * Self::FRAME_MAX],
+    pub frames: [CallFrame; Self::FRAME_MAX],
+    pub frame_count: usize,
+    pub stack: [Value; Self::STACK_MAX],
     pub sp: usize, // stack pointer
     pub globals: Table,
     pub open_upvalues: Vec<GcRef>,
@@ -58,8 +60,13 @@ impl Vm {
         let mut gc = Gc::new();
         let init_string = gc.alloc(Obj::String("init".to_string()));
         let mut vm = Self {
-            frames: Vec::with_capacity(Self::FRAME_MAX),
-            stack: [Value::Nil; Self::STACK_MAX * Self::FRAME_MAX],
+            frames: [CallFrame {
+                closure: GcRef(0),
+                ip: 0,
+                slot: 0,
+            }; Self::FRAME_MAX],
+            frame_count: 0,
+            stack: [Value::Nil; Self::STACK_MAX],
             sp: 0,
             globals: HashMap::new(),
             open_upvalues: Vec::with_capacity(Self::STACK_MAX),
@@ -89,22 +96,23 @@ impl Vm {
         }
     }
 
-    pub fn read_byte(&mut self) -> OpCode {
-        let frame = self.current_frame_mut();
-        let ip = frame.ip;
-        frame.ip += 1;
-
-        let clos_ref = frame.closure;
-        if let Obj::Closure(c) = self.gc.deref(clos_ref) {
-            if let Obj::Function(f) = self.gc.deref(c.function) {
-                return f.chunk.code[ip];
-            }
-        }
-        panic!("Invalid frame state");
-    }
-
     pub fn run(&mut self) -> Result<(), SmsError> {
         loop {
+            let frame = self.current_frame_mut();
+            let ip = frame.ip;
+            frame.ip += 1;
+
+            let clos_ref = frame.closure;
+            let code = if let Obj::Closure(c) = self.gc.deref(clos_ref) {
+                if let Obj::Function(f) = self.gc.deref(c.function) {
+                    f.chunk.code[ip]
+                } else {
+                    panic!("Invalid frame state");
+                }
+            } else {
+                panic!("Invalid frame state");
+            };
+
             #[cfg(feature = "debug_trace_execution")]
             {
                 print!("         ");
@@ -122,7 +130,7 @@ impl Vm {
                     }
                 };
             }
-            match self.read_byte() {
+            match code {
                 OpCode::Constant(c) => {
                     let v = self.read_constant(c);
                     self.push(v);
@@ -133,9 +141,9 @@ impl Vm {
                 }
                 OpCode::Return => {
                     let res = self.pop();
-                    let frame = self.frames.pop().expect("No frame to pop.");
+                    let frame = self.frames_pop();
                     self.close_upvalues(frame.slot);
-                    if self.frames.is_empty() {
+                    if self.frame_count == 0 {
                         return Ok(());
                     }
                     self.sp = frame.slot;
@@ -607,11 +615,11 @@ impl Vm {
     }
 
     fn current_frame(&self) -> &CallFrame {
-        self.frames.last().unwrap()
+        &self.frames[self.frame_count - 1]
     }
 
     fn current_frame_mut(&mut self) -> &mut CallFrame {
-        self.frames.last_mut().unwrap()
+        &mut self.frames[self.frame_count - 1]
     }
 
     fn call_value(&mut self, callee: Value, arg_count: usize) -> bool {
@@ -688,15 +696,24 @@ impl Vm {
             return false;
         }
 
-        if self.frames.len() == Self::FRAME_MAX {
+        if self.frame_count == Self::FRAME_MAX {
             let _ = self.runtime_error("Stack overflow.");
             return false;
         }
 
-        self.frames
-            .push(CallFrame::new(clos_ref, self.sp - arg_count - 1));
+        self.frames_push(CallFrame::new(clos_ref, self.sp - arg_count - 1));
         true
     }
+
+    fn frames_push(&mut self, frame: CallFrame) {
+        self.frames[self.frame_count] = frame;
+        self.frame_count += 1;
+    }
+
+    fn frames_pop(&mut self) -> CallFrame {
+        self.frame_count -= 1;
+        self.frames[self.frame_count]
+    } 
 
     fn define_native(&mut self, name: &str, func: NativeFunction) {
         self.globals.insert(name.to_string(), Value::Native(func));
@@ -705,7 +722,9 @@ impl Vm {
     pub fn runtime_error(&mut self, msg: &str) -> Result<(), SmsError> {
         eprintln!("{}", msg);
 
-        for frame in self.frames.iter().rev() {
+        for i in self.frame_count-1..0{
+            
+            let frame = self.frames[i];
             let inst = if frame.ip > 0 { frame.ip - 1 } else { 0 };
 
             let (line, name) = if let Obj::Closure(c) = self.gc.deref(frame.closure) {
@@ -731,7 +750,7 @@ impl Vm {
             eprintln!("[line {}] in {}", line, name);
         }
 
-        self.frames.clear();
+        self.frame_count = 0;
         Err(SmsError::RuntimeError)
     }
 
