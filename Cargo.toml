@@ -13,3 +13,4 @@ debug_log_gc = []
 stress_gc = []
 
 [dependencies]
+test-generator = "0.3.1"
