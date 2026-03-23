@@ -230,6 +230,7 @@ impl Vm {
                 OpCode::Subtract => binary_op!(self, Number, -),
                 OpCode::Multiply => binary_op!(self, Number, *),
                 OpCode::Divide => binary_op!(self, Number, /),
+                OpCode::Mod => binary_op!(self, Number, %),
                 OpCode::Negate => {
                     let n = match self.pop() {
                         Value::Number(n) => n,

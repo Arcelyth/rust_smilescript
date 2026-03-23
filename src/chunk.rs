@@ -25,6 +25,7 @@ pub enum OpCode {
     Subtract, 
     Multiply,
     Divide,
+    Mod,
     Not,
     JumpIfFalse(u16),
     Jump(u16),

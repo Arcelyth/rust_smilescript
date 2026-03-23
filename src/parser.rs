@@ -266,6 +266,9 @@ impl<'c> Parser<'c> {
             TokenType::Slash => {
                 self.emit_code(OpCode::Divide);
             }
+            TokenType::Percent => {
+                self.emit_code(OpCode::Mod);
+            }
             TokenType::BangEqual => {
                 self.emit_code(OpCode::Equal);
                 self.emit_code(OpCode::Not);
@@ -920,6 +923,7 @@ impl<'c> Parser<'c> {
             TokenType::Plus => ParseRule::new(None, Some(Parser::binary), Precedence::Term),
             TokenType::Semicolon => ParseRule::new(None, None, Precedence::None),
             TokenType::Slash => ParseRule::new(None, Some(Parser::binary), Precedence::Factor),
+            TokenType::Percent => ParseRule::new(None, Some(Parser::binary), Precedence::Factor),
             TokenType::Star => ParseRule::new(None, Some(Parser::binary), Precedence::Factor),
             TokenType::Bang => ParseRule::new(Some(Parser::unary), None, Precedence::None),
             TokenType::BangEqual => {

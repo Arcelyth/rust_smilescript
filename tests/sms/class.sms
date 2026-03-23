@@ -39,7 +39,7 @@ class Doughnut {
     }
 }
 
-// Inherit
+// Inheritance
 class Cruller : Doughnut {
     finish(ingredient) {
         super.finish("icing");
