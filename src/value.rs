@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use crate::gc::*;
 use crate::object::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum Value {
     Nil,
     Bool(bool),

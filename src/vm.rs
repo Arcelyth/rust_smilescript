@@ -42,7 +42,8 @@ impl CallFrame {
 
 pub struct Vm {
     pub frames: Vec<CallFrame>,
-    pub stack: Vec<Value>,
+    pub stack: [Value; Self::STACK_MAX * Self::FRAME_MAX],
+    pub sp: usize, // stack pointer
     pub globals: Table,
     pub open_upvalues: Vec<GcRef>,
     pub gc: Gc,
@@ -58,7 +59,8 @@ impl Vm {
         let init_string = gc.alloc(Obj::String("init".to_string()));
         let mut vm = Self {
             frames: Vec::with_capacity(Self::FRAME_MAX),
-            stack: Vec::with_capacity(Self::STACK_MAX),
+            stack: [Value::Nil; Self::STACK_MAX * Self::FRAME_MAX],
+            sp: 0,
             globals: HashMap::new(),
             open_upvalues: Vec::with_capacity(Self::STACK_MAX),
             gc: gc,
@@ -95,7 +97,7 @@ impl Vm {
         let clos_ref = frame.closure;
         if let Obj::Closure(c) = self.gc.deref(clos_ref) {
             if let Obj::Function(f) = self.gc.deref(c.function) {
-                return f.chunk.code[ip].clone();
+                return f.chunk.code[ip];
             }
         }
         panic!("Invalid frame state");
@@ -136,7 +138,7 @@ impl Vm {
                     if self.frames.is_empty() {
                         return Ok(());
                     }
-                    self.stack.truncate(frame.slot);
+                    self.sp = frame.slot;
                     self.push(res);
                 }
                 OpCode::Nil => self.push(Value::Nil),
@@ -147,7 +149,7 @@ impl Vm {
                 }
                 OpCode::GetLocal(slot) => {
                     let idx = self.current_frame().slot + slot as usize;
-                    let v = self.stack[idx].clone();
+                    let v = self.stack[idx];
                     self.push(v);
                 }
                 OpCode::SetLocal(slot) => {
@@ -167,8 +169,8 @@ impl Vm {
                 OpCode::GetGlobal(idx) => {
                     let name = self.read_string(idx);
                     if let Some(v) = self.globals.get(&name) {
-                        let val = v.clone();
-                        self.push(val)
+                        let val = v;
+                        self.push(*val)
                     } else {
                         let msg = format!("Undefined variable '{}'", name);
                         return self.runtime_error(&msg);
@@ -189,7 +191,7 @@ impl Vm {
                 OpCode::Add => {
                     let b = self.pop();
                     let a = self.pop();
-                    match (a.clone(), b.clone()) {
+                    match (a, b) {
                         (Value::Number(n1), Value::Number(n2)) => {
                             self.push(Value::Number(n1 + n2));
                         }
@@ -289,9 +291,9 @@ impl Vm {
 
                     let value = if let Obj::UpValue(upv) = self.gc.deref(upv_ref) {
                         if let Some(val) = &upv.closed {
-                            val.clone()
+                            *val
                         } else {
-                            self.stack[upv.location].clone()
+                            self.stack[upv.location]
                         }
                     } else {
                         panic!("Not an upvalue")
@@ -320,7 +322,7 @@ impl Vm {
                     }
                 }
                 OpCode::CloseUpValue => {
-                    let pos = self.stack.len() - 1;
+                    let pos = self.sp - 1;
                     self.close_upvalues(pos);
                     self.pop();
                 }
@@ -331,11 +333,11 @@ impl Vm {
                     self.push(Value::Obj(class_def));
                 }
                 OpCode::SetProperty(idx) => {
-                    let value = self.peek(0).clone();
+                    let value = self.peek(0);
                     let p_name = self.read_string(idx);
                     if let Value::Obj(instance_ref) = self.peek(1) {
                         if let Obj::Instance(instance) = self.gc.deref_mut(instance_ref) {
-                            instance.fields.insert(p_name, value.clone());
+                            instance.fields.insert(p_name, value);
                             self.pop();
                             self.pop();
                             self.push(value);
@@ -428,26 +430,37 @@ impl Vm {
         }
     }
 
+    #[inline(always)]
     pub fn push(&mut self, value: Value) {
-        self.stack.push(value);
+        self.stack[self.sp] = value;
+        self.sp += 1;
     }
 
+    #[inline(always)]
     pub fn pop(&mut self) -> Value {
-        self.stack.pop().expect("Stack is empty")
+        if self.sp == 0 {
+            panic!("Empty stack.");
+        }
+        self.sp -= 1;
+        self.stack[self.sp]
     }
 
+    #[inline(always)]
     fn peek(&self, n: usize) -> Value {
-        let size = self.stack.len();
-        self.stack[size - 1 - n].clone()
+        if self.sp == 0 {
+            panic!("Empty stack.");
+        }
+
+        self.stack[self.sp - 1 - n]
     }
 
     fn invoke(&mut self, name: String, arg_count: u8) -> bool {
         if let Value::Obj(receiver_ref) = self.peek(arg_count as usize) {
             if let Obj::Instance(instance) = self.gc.deref(receiver_ref) {
                 if let Some(value) = instance.fields.get(&name) {
-                    let pos = self.stack.len() - arg_count as usize - 1;
-                    self.stack[pos] = value.clone();
-                    return self.call_value(value.clone(), arg_count as usize);
+                    let pos = self.sp - arg_count as usize - 1;
+                    self.stack[pos] = *value;
+                    return self.call_value(*value, arg_count as usize);
                 }
                 return self.invoke_from_class(instance.class, name, arg_count);
             } else {
@@ -485,7 +498,7 @@ impl Vm {
         let clos_ref = self.current_frame().closure;
         if let Obj::Closure(c) = self.gc.deref(clos_ref) {
             if let Obj::Function(f) = self.gc.deref(c.function) {
-                return f.chunk.constants[idx as usize].clone();
+                return f.chunk.constants[idx as usize];
             }
         }
         panic!("Invalid state reading constant")
@@ -495,7 +508,7 @@ impl Vm {
         let val = self.read_constant(idx);
         if let Value::Obj(s_ref) = val {
             if let Obj::String(s) = self.gc.deref(s_ref) {
-                return s.clone();
+                return s.to_string();
             }
         }
         panic!("Constant is not String!")
@@ -560,7 +573,7 @@ impl Vm {
 
     fn get_string(&self, r: GcRef) -> String {
         if let Obj::String(s) = self.gc.deref(r) {
-            s.clone()
+            s.to_string()
         } else {
             unreachable!()
         }
@@ -585,7 +598,7 @@ impl Vm {
         self.open_upvalues.retain(|upv_ref| {
             if let Obj::UpValue(upv) = self.gc.deref_mut(*upv_ref) {
                 if upv.location >= pos {
-                    upv.closed = Some(stack[upv.location].clone());
+                    upv.closed = Some(stack[upv.location]);
                     return false;
                 }
             }
@@ -618,9 +631,8 @@ impl Vm {
                             };
 
                         let instance = Instance::new(gc_ref);
-                        let stack_len = self.stack.len();
                         let ins_ref = self.gc.alloc(Obj::Instance(instance));
-                        self.stack[stack_len - 1 - arg_count] = Value::Obj(ins_ref);
+                        self.stack[self.sp - 1 - arg_count] = Value::Obj(ins_ref);
                         if let Some(v) = class.methods.get(&init_string) {
                             if let Value::Obj(init_ref) = v {
                                 return self.call(*init_ref, arg_count);
@@ -635,8 +647,7 @@ impl Vm {
                         return true;
                     }
                     Obj::BoundMethod(bm) => {
-                        let stack_len = self.stack.len();
-                        self.stack[stack_len - 1 - arg_count] = bm.receiver;
+                        self.stack[self.sp - 1 - arg_count] = bm.receiver;
                         self.call(bm.method, arg_count);
                         return true;
                     }
@@ -647,9 +658,9 @@ impl Vm {
                 false
             }
             Value::Native(native) => {
-                let offset = self.stack.len() - arg_count;
+                let offset = self.sp - arg_count;
                 let res = native.0(&self.stack[offset..]);
-                self.stack.truncate(offset - 1);
+                self.sp = offset - 1;
                 self.push(res);
                 true
             }
@@ -682,9 +693,8 @@ impl Vm {
             return false;
         }
 
-        let stack_len = self.stack.len();
         self.frames
-            .push(CallFrame::new(clos_ref, stack_len - arg_count - 1));
+            .push(CallFrame::new(clos_ref, self.sp - arg_count - 1));
         true
     }
 
