@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "smilescript"
+name = "smsc"
 version = "0.1.0"
 dependencies = [
  "test-generator",

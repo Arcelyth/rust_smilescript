@@ -21,7 +21,7 @@ impl Cmd {
         } else if args.len() == 2 {
             Self::run_file(&mut vm, &args[1])
         } else {
-            println!("Usage: sms [path]");
+            println!("Usage: smsc [path]");
             return;
         }
     }

@@ -1,7 +1,7 @@
 use std::fs;
 use std::process;
 
-use smilescript::vm::Vm;
+use smsc::vm::Vm;
 
 pub fn should_ok(path: &str) {
     let content = match fs::read_to_string(path) {

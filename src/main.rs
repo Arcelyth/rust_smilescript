@@ -1,4 +1,4 @@
-use smilescript::cmd::*;
+use smsc::cmd::*;
 
 fn main() {
     Cmd::run();
