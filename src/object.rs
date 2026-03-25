@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::chunk::Chunk;
 use crate::gc::GcRef;
 use crate::value::Value;
+use crate::vm::Vm;
 
 pub type Table = HashMap<String, Value>;
 
@@ -15,6 +16,39 @@ pub enum Obj {
     Class(Class),
     Instance(Instance),
     BoundMethod(BoundMethod),
+}
+
+impl Obj {
+    pub fn get_size(&self, vm: &Vm) -> usize {
+        use std::mem::size_of;
+
+        let base_size = size_of::<Self>();
+
+        match self {
+            Obj::String(s) => base_size + s.capacity(),
+            Obj::Function(f) => {
+                base_size
+                    + f.chunk.code.capacity()
+                    + f.chunk.constants.capacity() * size_of::<Value>()
+            }
+            Obj::Closure(c) => base_size + c.upvalues.len() * size_of::<usize>(),
+
+            Obj::UpValue(_) => base_size + size_of::<Value>(),
+
+            Obj::Class(c) => {
+                let name_size = vm.gc.deref(c.name).get_size(vm);
+                base_size
+                    + name_size
+                    + c.methods.capacity() * (size_of::<Value>() + size_of::<usize>())
+            }
+
+            Obj::Instance(i) => {
+                base_size + i.fields.capacity() * (size_of::<Value>() + size_of::<usize>())
+            }
+
+            Obj::BoundMethod(_) => base_size,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +86,7 @@ impl Function {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct NativeFunction(pub fn(&[Value]) -> Value);
+pub struct NativeFunction(pub fn(&Vm, &[Value]) -> Value);
 
 #[derive(Debug, Clone)]
 pub struct Closure {
@@ -134,8 +168,6 @@ pub struct BoundMethod {
 
 impl BoundMethod {
     pub fn new(receiver: Value, method: GcRef) -> Self {
-        Self {
-            receiver, method
-        }
+        Self { receiver, method }
     }
 }

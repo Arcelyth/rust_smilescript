@@ -75,6 +75,7 @@ impl Vm {
             init_string,
         };
         vm.define_native("clock", NativeFunction(clock_native));
+        vm.define_native("size_of", NativeFunction(size_of));
         vm
     }
 
@@ -669,7 +670,7 @@ impl Vm {
             }
             Value::Native(native) => {
                 let offset = self.sp - arg_count;
-                let res = native.0(&self.stack[offset..]);
+                let res = native.0(self, &self.stack[offset..]);
                 self.sp = offset - 1;
                 self.push(res);
                 true
@@ -801,11 +802,28 @@ impl Vm {
     }
 }
 
-pub fn clock_native(_args: &[Value]) -> Value {
+pub fn clock_native(_vm: &Vm, _args: &[Value]) -> Value {
     let start = SystemTime::now();
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
 
     Value::Number(since_the_epoch.as_secs_f64())
+}
+
+pub fn size_of(vm: &Vm, args: &[Value]) -> Value {
+    if args.is_empty() {
+        return Value::Number(0.)
+    }
+    
+    let size = match args[0]  {
+        Value::Nil => 0.,
+        Value::Bool(_) => 1.,
+        Value::Number(_) => 8.,
+        Value::Native(_) => std::mem::size_of::<fn(&mut Vm, &[Value]) -> Value>() as f64,
+        Value::Obj(gc_ref) => {
+            vm.gc.deref(gc_ref).get_size(vm) as f64
+        },
+    };
+    Value::Number(size)
 }
