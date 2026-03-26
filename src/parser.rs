@@ -317,6 +317,25 @@ impl<'c> Parser<'c> {
         self.named_variable(self.previous, can_assign);
     }
 
+    fn array(&mut self, _can_assign: bool) {
+        let mut el_count = 0;
+        if !self.check(TokenType::RightBracket) {
+            loop {
+                self.expression();
+                el_count += 1;
+                match u8::try_from(el_count) {
+                    Ok(_) => (),
+                    Err(_) => self.error("Too many elements in array"),
+                }
+                if !self.match_token(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightBracket, "Expect ']' after array elements.");
+        self.emit_code(OpCode::Array(el_count));
+    }
+
     fn this(&mut self, _can_assign: bool) {
         if let None = self.current_class {
             self.error("Can't use 'this' outside of a class.");
@@ -499,7 +518,9 @@ impl<'c> Parser<'c> {
         self.consume(TokenType::Semicolon, "Expect ';' after break.");
         let exit_jump = self.emit_code(OpCode::Jump(0xffff));
         let last_idx = self.compiler.loop_stack.len() - 1;
-        self.compiler.loop_stack[last_idx].break_jumps.push(exit_jump);
+        self.compiler.loop_stack[last_idx]
+            .break_jumps
+            .push(exit_jump);
     }
 
     fn continue_statement(&mut self) {
@@ -961,6 +982,11 @@ impl<'c> Parser<'c> {
             TokenType::This => ParseRule::new(Some(Parser::this), None, Precedence::None),
             TokenType::True => ParseRule::new(Some(Parser::literal), None, Precedence::None),
             TokenType::Var => ParseRule::new(None, None, Precedence::None),
+            TokenType::LeftBracket => ParseRule::new(
+                Some(Parser::array),
+                None,
+                Precedence::None,
+            ),
             TokenType::While => ParseRule::new(None, None, Precedence::None),
             TokenType::Error => ParseRule::new(None, None, Precedence::None),
             TokenType::Eof => ParseRule::new(None, None, Precedence::None),

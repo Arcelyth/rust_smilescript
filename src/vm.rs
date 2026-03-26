@@ -437,6 +437,14 @@ impl Vm {
                         }
                     }
                 }
+                OpCode::Array(el_count) => {
+                    let mut elements = Vec::new();
+                    for _ in 0..el_count {
+                        elements.push(self.pop());
+                    } 
+                    let arr_ref = self.gc.alloc(Obj::Array(elements));
+                    self.push(Value::Obj(arr_ref));
+                }
             }
         }
     }

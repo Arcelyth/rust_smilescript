@@ -41,6 +41,7 @@ pub enum OpCode {
     SuperInvoke((u8, u8)),
     Inherit,
     GetSuper(u8),
+    Array(u8),
 }
 
 #[derive(Debug, Clone)]

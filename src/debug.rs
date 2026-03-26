@@ -80,6 +80,7 @@ impl Disassembler {
             OpCode::SuperInvoke(t) => self.invoke_instruction("OP_SUPER_INVOKE", *t),
             OpCode::Inherit => println!("OP_INHERIT"),
             OpCode::GetSuper(c) => self.const_instruction(chunk, "OP_INHERIT", *c),
+            OpCode::Array(c) => self.const_instruction(chunk, "OP_ARRAY", *c),
             _ => println!("Unknown opcode: {:?}", code),
         }
     }

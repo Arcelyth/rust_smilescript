@@ -16,6 +16,7 @@ pub enum Obj {
     Class(Class),
     Instance(Instance),
     BoundMethod(BoundMethod),
+    Array(Vec<Value>),
 }
 
 impl Obj {
@@ -47,6 +48,10 @@ impl Obj {
             }
 
             Obj::BoundMethod(_) => base_size,
+
+            Obj::Array(arr) => {
+                base_size + arr.capacity() * size_of::<Value>() 
+            }
         }
     }
 }

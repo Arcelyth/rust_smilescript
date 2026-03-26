@@ -21,12 +21,14 @@ impl<'src> Scanner<'src> {
         if self.is_at_end() {
             return self.make_token(TokenType::Eof);
         }
-        
+
         let c = self.advance();
 
         match c {
             b'(' => self.make_token(TokenType::LeftParen),
             b')' => self.make_token(TokenType::RightParen),
+            b'[' => self.make_token(TokenType::LeftBracket),
+            b']' => self.make_token(TokenType::RightBracket),
             b'{' => self.make_token(TokenType::LeftBrace),
             b'}' => self.make_token(TokenType::RightBrace),
             b':' => self.make_token(TokenType::Colon),
@@ -142,7 +144,7 @@ impl<'src> Scanner<'src> {
     }
 
     fn identifier(&mut self) -> Token<'src> {
-        while is_alpha(self.peek()) || is_digit(self.peek()){
+        while is_alpha(self.peek()) || is_digit(self.peek()) {
             self.advance();
         }
 
@@ -159,7 +161,7 @@ impl<'src> Scanner<'src> {
             "false" => TokenType::False,
             "for" => TokenType::For,
             "fun" => TokenType::Fun,
-            "if" => TokenType::If, 
+            "if" => TokenType::If,
             "nil" => TokenType::Nil,
             "or" => TokenType::Or,
             "print" => TokenType::Print,
@@ -199,6 +201,8 @@ pub enum TokenType {
     // Single-character tokens.
     LeftParen,
     RightParen,
+    LeftBracket,
+    RightBracket,
     LeftBrace,
     RightBrace,
     Comma,
@@ -206,7 +210,7 @@ pub enum TokenType {
     Minus,
     Plus,
     Percent,
-    Colon, 
+    Colon,
     Semicolon,
     Slash,
     Star,
@@ -259,15 +263,9 @@ pub struct Token<'src> {
 
 impl<'src> Token<'src> {
     pub fn new(kind: TokenType, lexeme: &'src str, line: usize) -> Self {
-        Self {
-            kind, 
-            lexeme,
-            line,
-        }
+        Self { kind, lexeme, line }
     }
 }
-
-
 
 fn is_digit(ch: u8) -> bool {
     ch >= b'0' && ch <= b'9'
