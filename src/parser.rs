@@ -336,6 +336,18 @@ impl<'c> Parser<'c> {
         self.emit_code(OpCode::Array(el_count));
     }
 
+    fn array_index(&mut self, can_assign: bool) {
+        self.expression();
+        self.consume(TokenType::RightBracket, "Expect ']' after index.");
+
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.expression();
+            self.emit_code(OpCode::SetIndex);
+        } else {
+            self.emit_code(OpCode::GetIndex);
+        }
+    }
+
     fn this(&mut self, _can_assign: bool) {
         if let None = self.current_class {
             self.error("Can't use 'this' outside of a class.");
@@ -984,8 +996,8 @@ impl<'c> Parser<'c> {
             TokenType::Var => ParseRule::new(None, None, Precedence::None),
             TokenType::LeftBracket => ParseRule::new(
                 Some(Parser::array),
-                None,
-                Precedence::None,
+                Some(Parser::array_index),
+                Precedence::Call,
             ),
             TokenType::While => ParseRule::new(None, None, Precedence::None),
             TokenType::Error => ParseRule::new(None, None, Precedence::None),

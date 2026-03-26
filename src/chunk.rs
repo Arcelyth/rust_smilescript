@@ -42,6 +42,8 @@ pub enum OpCode {
     Inherit,
     GetSuper(u8),
     Array(u8),
+    SetIndex,
+    GetIndex,
 }
 
 #[derive(Debug, Clone)]

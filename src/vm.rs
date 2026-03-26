@@ -441,9 +441,44 @@ impl Vm {
                     let mut elements = Vec::new();
                     for _ in 0..el_count {
                         elements.push(self.pop());
-                    } 
+                    }
+                    elements.reverse();
                     let arr_ref = self.gc.alloc(Obj::Array(elements));
                     self.push(Value::Obj(arr_ref));
+                }
+                OpCode::SetIndex => {
+                    let value = self.pop();
+                    let idx = if let Value::Number(i) = self.pop() {
+                        i as usize
+                    } else {
+                        self.runtime_error("Array's index must be a number.")?;
+                        return Err(SmsError::RuntimeError);
+                    };
+                    let arr = self.pop();
+                    if let Value::Obj(o) = arr {
+                        if let Obj::Array(array) = self.gc.deref_mut(o) {
+                            if idx >= array.len() {
+                                self.runtime_error("Index out of range.")?;
+                                return Err(SmsError::RuntimeError);
+                            }
+                            array[idx] = value;
+                        }
+                    }
+                    self.push(value);
+                }
+                OpCode::GetIndex => {
+                    let idx = if let Value::Number(i) = self.pop() {
+                        i
+                    } else {
+                        self.runtime_error("Array's index must be a number.")?;
+                        return Err(SmsError::RuntimeError);
+                    };
+                    let arr = self.pop();
+                    if let Value::Obj(o) = arr {
+                        if let Obj::Array(array) = self.gc.deref(o) {
+                            self.push(array[idx as usize])
+                        }
+                    }
                 }
             }
         }
@@ -794,6 +829,9 @@ impl Vm {
                         format!("object")
                     }
                 }
+                Obj::Array(arr) => {
+                    format!("{:?}", arr)
+                }
                 Obj::Instance(_i) => {
                     format!("<instance>")
                 }
@@ -821,17 +859,15 @@ pub fn clock_native(_vm: &Vm, _args: &[Value]) -> Value {
 
 pub fn size_of(vm: &Vm, args: &[Value]) -> Value {
     if args.is_empty() {
-        return Value::Number(0.)
+        return Value::Number(0.);
     }
-    
-    let size = match args[0]  {
+
+    let size = match args[0] {
         Value::Nil => 0.,
         Value::Bool(_) => 1.,
         Value::Number(_) => 8.,
         Value::Native(_) => std::mem::size_of::<fn(&mut Vm, &[Value]) -> Value>() as f64,
-        Value::Obj(gc_ref) => {
-            vm.gc.deref(gc_ref).get_size(vm) as f64
-        },
+        Value::Obj(gc_ref) => vm.gc.deref(gc_ref).get_size(vm) as f64,
     };
     Value::Number(size)
 }
