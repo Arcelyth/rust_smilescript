@@ -468,7 +468,7 @@ impl Vm {
                 }
                 OpCode::GetIndex => {
                     let idx = if let Value::Number(i) = self.pop() {
-                        i
+                        i as usize
                     } else {
                         self.runtime_error("Array's index must be a number.")?;
                         return Err(SmsError::RuntimeError);
@@ -476,7 +476,12 @@ impl Vm {
                     let arr = self.pop();
                     if let Value::Obj(o) = arr {
                         if let Obj::Array(array) = self.gc.deref(o) {
-                            self.push(array[idx as usize])
+                            if idx >= array.len() {
+                                self.runtime_error("Index out of range.")?;
+                                return Err(SmsError::RuntimeError);
+                            }
+
+                            self.push(array[idx])
                         }
                     }
                 }
@@ -766,9 +771,7 @@ impl Vm {
     }
 
     pub fn runtime_error(&mut self, msg: &str) -> Result<(), SmsError> {
-        eprintln!("{}", msg);
-
-        for i in self.frame_count - 1..0 {
+        for i in self.frame_count - 1..=0 {
             let frame = self.frames[i];
             let inst = if frame.ip > 0 { frame.ip - 1 } else { 0 };
 
@@ -792,7 +795,7 @@ impl Vm {
                 (0, "unknown".to_string())
             };
 
-            eprintln!("[line {}] in {}", line, name);
+            eprintln!("[line {}] in {}: {}", line, name, msg);
         }
 
         self.frame_count = 0;
